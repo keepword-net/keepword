@@ -259,11 +259,11 @@ impl Node {
             sightings: r.sightings(),
         };
         for (slot, countries) in self.store.disputes_for(url, self.recheck_since(now))? {
-            if let (versions, Some(end)) = r.round_at(slot) {
-                if versions.len() >= 2 {
-                    rc.draws
-                        .push(self.draw(&r, slot, end, &countries, versions, now));
-                }
+            if let (versions, Some(end)) = r.round_at(slot)
+                && versions.len() >= 2
+            {
+                rc.draws
+                    .push(self.draw(&r, slot, end, &countries, versions, now));
             }
         }
 
@@ -663,10 +663,10 @@ impl Node {
         versions.sort_by_key(|v| v.reporters.len());
         let mut countries: Vec<String> = Vec::new();
         for v in &versions {
-            if let Some(c) = v.countries.iter().next() {
-                if !countries.contains(c) {
-                    countries.push(c.clone());
-                }
+            if let Some(c) = v.countries.iter().next()
+                && !countries.contains(c)
+            {
+                countries.push(c.clone());
             }
         }
         for v in &versions {

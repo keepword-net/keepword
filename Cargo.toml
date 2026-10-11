@@ -13,7 +13,7 @@ exclude = ["crates/keepword-tlsn"]
 [workspace.package]
 version = "2.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.90"
 license = "AGPL-3.0-only"
 repository = "https://github.com/keepword-net/keepword"
 

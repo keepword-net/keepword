@@ -135,12 +135,12 @@ pub fn evaluate_ending_in(
                         keys.remove(&old.witness);
                     }
                 }
-                if let Some(n) = old_asn {
-                    if let Some(c) = asns.get_mut(&n) {
-                        *c -= 1;
-                        if *c == 0 {
-                            asns.remove(&n);
-                        }
+                if let Some(n) = old_asn
+                    && let Some(c) = asns.get_mut(&n)
+                {
+                    *c -= 1;
+                    if *c == 0 {
+                        asns.remove(&n);
                     }
                 }
                 left += 1;

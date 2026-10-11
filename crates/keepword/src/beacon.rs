@@ -63,17 +63,17 @@ impl Node {
     pub async fn capture_beacon(&self) -> Option<Beacon> {
         let now = now_ms();
         let stored = self.store.beacon_latest().ok().flatten();
-        if let Some(b) = &stored {
-            if now - b.time_ms() <= FRESH_MS && b.time_ms() <= now {
-                return stored;
-            }
+        if let Some(b) = &stored
+            && now - b.time_ms() <= FRESH_MS
+            && b.time_ms() <= now
+        {
+            return stored;
         }
-        if self.config.beacon.drand().is_some() {
-            if let Ok(b) = self.fetch_beacon(None).await {
-                if b.time_ms() <= now + FRESH_MS {
-                    return Some(b);
-                }
-            }
+        if self.config.beacon.drand().is_some()
+            && let Ok(b) = self.fetch_beacon(None).await
+            && b.time_ms() <= now + FRESH_MS
+        {
+            return Some(b);
         }
         stored.filter(|b| b.time_ms() <= now)
     }

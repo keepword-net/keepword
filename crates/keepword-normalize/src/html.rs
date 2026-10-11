@@ -332,11 +332,11 @@ impl<'a> Walker<'a> {
             self.flush(open.kind);
         }
         let v = open.el.value();
-        if is_html_a(v) {
-            if let Some(href) = v.attr("href").and_then(|h| clean_link(self.base, h)) {
-                let text = clean_text(&link_text(open.el));
-                self.pending.push(format!("link: {href} | {text}"));
-            }
+        if is_html_a(v)
+            && let Some(href) = v.attr("href").and_then(|h| clean_link(self.base, h))
+        {
+            let text = clean_text(&link_text(open.el));
+            self.pending.push(format!("link: {href} | {text}"));
         }
     }
 }
