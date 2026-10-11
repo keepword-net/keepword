@@ -309,10 +309,10 @@ impl Node {
     /// must not age out of their tables.
     pub fn descriptor(&self) -> Signed<Descriptor> {
         let mut d = self.descriptor.lock().unwrap_or_else(|p| p.into_inner());
-        if now_ms() - d.body.issued_at_ms > DESCRIPTOR_REFRESH_MS {
-            if let Ok(fresh) = self.build_descriptor() {
-                *d = fresh;
-            }
+        if now_ms() - d.body.issued_at_ms > DESCRIPTOR_REFRESH_MS
+            && let Ok(fresh) = self.build_descriptor()
+        {
+            *d = fresh;
         }
         d.clone()
     }
@@ -356,10 +356,10 @@ impl Node {
                 return Ok(false);
             }
         }
-        if let Gossip::Beacon(b) = &g {
-            if !self.beacon_wanted(b, now)? {
-                return Ok(false);
-            }
+        if let Gossip::Beacon(b) = &g
+            && !self.beacon_wanted(b, now)?
+        {
+            return Ok(false);
         }
         if g.verify().is_err() {
             return Ok(false);
@@ -370,12 +370,11 @@ impl Node {
             Gossip::Cancel(c) => self.accept_cancel(c, now)?,
             Gossip::Recheck(r) => self.accept_recheck(r, now)?,
             Gossip::TreeHead(h) => {
-                if let Some(p) = self.store.peer(&h.head.log)? {
-                    if let Some(known) = &p.head {
-                        if known.is_equivocation_with(h) {
-                            self.record_equivocation(known, h)?;
-                        }
-                    }
+                if let Some(p) = self.store.peer(&h.head.log)?
+                    && let Some(known) = &p.head
+                    && known.is_equivocation_with(h)
+                {
+                    self.record_equivocation(known, h)?;
                 }
                 if let Some(other) = self.store.log_head_insert(h, now)? {
                     self.record_equivocation(&other, h)?;
@@ -1066,10 +1065,10 @@ impl Node {
             let n = page.messages.len();
             for (seq, g) in page.messages {
                 after = after.max(seq);
-                if let Some(g) = g {
-                    if self.ingest(g)? {
-                        stats.gossip_in += 1;
-                    }
+                if let Some(g) = g
+                    && self.ingest(g)?
+                {
+                    stats.gossip_in += 1;
                 }
             }
             if n < GOSSIP_PAGE as usize {
@@ -1091,10 +1090,11 @@ impl Node {
             let req = PushRequest::sign(&self.key, peer.key, now_ms(), messages)?;
             let resp: PushResponse = self.net.post_json(&join(ep, "/v1/gossip"), &req).await?;
             stats.gossip_out += resp.accepted;
-            if let Some(o) = resp.observation {
-                if o.body.subject == self.key.public() && o.body.observer == peer.key {
-                    self.ingest(Gossip::Observation(o))?;
-                }
+            if let Some(o) = resp.observation
+                && o.body.subject == self.key.public()
+                && o.body.observer == peer.key
+            {
+                self.ingest(Gossip::Observation(o))?;
             }
             sent_to = last;
             self.store

@@ -339,10 +339,10 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<()> {
-        if let Some(c) = &self.vantage.country {
-            if c.len() != 2 || !c.chars().all(|ch| ch.is_ascii_uppercase()) {
-                bail!("vantage.country must be an upper-case ISO 3166 code like \"DE\"");
-            }
+        if let Some(c) = &self.vantage.country
+            && (c.len() != 2 || !c.chars().all(|ch| ch.is_ascii_uppercase()))
+        {
+            bail!("vantage.country must be an upper-case ISO 3166 code like \"DE\"");
         }
         for (name, url) in [
             ("network.endpoint", self.network.endpoint.as_deref()),
@@ -357,10 +357,10 @@ impl Config {
                 }
             }
         }
-        if let Some(h) = &self.network.client_ip_header {
-            if axum::http::HeaderName::from_bytes(h.as_bytes()).is_err() {
-                bail!("network.client_ip_header must be a header name like X-Real-IP, got {h:?}");
-            }
+        if let Some(h) = &self.network.client_ip_header
+            && axum::http::HeaderName::from_bytes(h.as_bytes()).is_err()
+        {
+            bail!("network.client_ip_header must be a header name like X-Real-IP, got {h:?}");
         }
         Ok(())
     }
@@ -473,7 +473,7 @@ fn hex_encode(b: &[u8]) -> String {
 }
 
 fn hex_decode(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return None;
     }
     (0..s.len())

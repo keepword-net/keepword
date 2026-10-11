@@ -110,17 +110,17 @@ impl HttpCapturer {
                 .await
                 .map_err(|e| CaptureError::Fetch(error_chain(&e)))?;
 
-            if resp.status().is_redirection() {
-                if let Some(loc) = resp.headers().get(LOCATION).and_then(|v| v.to_str().ok()) {
-                    let next = current
-                        .join(loc)
-                        .map_err(|_| CaptureError::Fetch(format!("bad redirect target {loc:?}")))?;
-                    if redirects.len() >= self.cfg.max_redirects {
-                        return Err(CaptureError::Fetch("too many redirects".into()));
-                    }
-                    redirects.push(std::mem::replace(&mut current, next));
-                    continue;
+            if resp.status().is_redirection()
+                && let Some(loc) = resp.headers().get(LOCATION).and_then(|v| v.to_str().ok())
+            {
+                let next = current
+                    .join(loc)
+                    .map_err(|_| CaptureError::Fetch(format!("bad redirect target {loc:?}")))?;
+                if redirects.len() >= self.cfg.max_redirects {
+                    return Err(CaptureError::Fetch("too many redirects".into()));
                 }
+                redirects.push(std::mem::replace(&mut current, next));
+                continue;
             }
             return self.record(url, current, redirects, resp).await;
         }
