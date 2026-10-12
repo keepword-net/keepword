@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -88,8 +88,17 @@ enum Cmd {
     },
     /// List captures of a URL and where its content changed.
     History { url: String },
-    /// Diff two captures (IDs), or the last two versions of a URL.
-    Diff { a: String, b: Option<String> },
+    /// Diff two captures (IDs), the last two versions of a URL, or two
+    /// bundle files.
+    Diff {
+        /// URL, or attestation ID (prefix). Omit with --bundle.
+        #[arg(required_unless_present = "bundle")]
+        a: Option<String>,
+        b: Option<String>,
+        /// Diff two bundle files instead; needs no node.
+        #[arg(long, num_args = 2, value_names = ["A", "B"], conflicts_with_all = ["a", "b"])]
+        bundle: Option<Vec<PathBuf>>,
+    },
     /// Manage the watchlist.
     Watch {
         #[command(subcommand)]
@@ -305,6 +314,12 @@ fn at_ms(at: &Option<String>) -> Result<Option<i64>> {
     at.as_deref().map(parse_time).transpose()
 }
 
+fn read_bundle(path: &Path) -> Result<Bundle> {
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    serde_json::from_str(&text).with_context(|| format!("parsing bundle {}", path.display()))
+}
+
 /// Returns Ok(false) when a verification failed.
 async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
     match cli.cmd {
@@ -367,11 +382,7 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
             esplora,
         } => {
             let b: Bundle = match (bundle, reference) {
-                (Some(path), _) => {
-                    let text = std::fs::read_to_string(&path)
-                        .with_context(|| format!("reading {}", path.display()))?;
-                    serde_json::from_str(&text).context("parsing bundle")?
-                }
+                (Some(path), _) => read_bundle(&path)?,
                 (None, Some(r)) => {
                     let node = Node::open(&dir)?;
                     let rec = node.resolve(&r, at_ms(&at)?)?;
@@ -473,38 +484,60 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                 }
             }
         }
-        Cmd::Diff { a, b } => {
-            let node = Node::open(&dir)?;
-            let (ra, rb) = match b {
-                Some(b) => (node.resolve(&a, None)?, node.resolve(&b, None)?),
-                None => {
-                    let url = target::canonical_url(&a).context("with one argument, give a URL")?;
-                    let hist = node.store.history(url.as_str())?;
-                    let latest = hist.last().context("no captures")?.clone();
-                    let prev = hist
-                        .iter()
-                        .rev()
-                        .find(|r| {
-                            r.signed.attestation.method == latest.signed.attestation.method
-                                && r.signed.attestation.comparison_hash()
-                                    != latest.signed.attestation.comparison_hash()
-                        })
-                        .context("only one version captured")?
-                        .clone();
-                    (prev, latest)
+        Cmd::Diff { a, b, bundle } => {
+            let ((ia, ta), (ib, tb)) = match bundle {
+                Some(paths) => {
+                    let side = |path: &PathBuf| -> Result<_> {
+                        let b = read_bundle(path)?;
+                        let text =
+                            Node::bundle_text(&b).with_context(|| path.display().to_string())?;
+                        Ok((b.attestation, text))
+                    };
+                    let ((sa, ta), (sb, tb)) = (side(&paths[0])?, side(&paths[1])?);
+                    if !keepword_core::quorum::comparable(&sa.attestation, &sb.attestation) {
+                        eprintln!(
+                            "warning: the bundles were captured or normalized differently; the diff shows that too"
+                        );
+                    }
+                    ((sa.id(), ta), (sb.id(), tb))
                 }
-            };
-            let (Some(ta), Some(tb)) = (
-                node.normalized_text(&ra.signed.attestation)?,
-                node.normalized_text(&rb.signed.attestation)?,
-            ) else {
-                bail!("normalized text for one of the captures was not retained");
+                None => {
+                    let node = Node::open(&dir)?;
+                    let a = a.expect("required without --bundle");
+                    let (ra, rb) = match b {
+                        Some(b) => (node.resolve(&a, None)?, node.resolve(&b, None)?),
+                        None => {
+                            let url = target::canonical_url(&a)
+                                .context("with one argument, give a URL")?;
+                            let hist = node.store.history(url.as_str())?;
+                            let latest = hist.last().context("no captures")?.clone();
+                            let prev = hist
+                                .iter()
+                                .rev()
+                                .find(|r| {
+                                    r.signed.attestation.method == latest.signed.attestation.method
+                                        && r.signed.attestation.comparison_hash()
+                                            != latest.signed.attestation.comparison_hash()
+                                })
+                                .context("only one version captured")?
+                                .clone();
+                            (prev, latest)
+                        }
+                    };
+                    let (Some(ta), Some(tb)) = (
+                        node.normalized_text(&ra.signed.attestation)?,
+                        node.normalized_text(&rb.signed.attestation)?,
+                    ) else {
+                        bail!("normalized text for one of the captures was not retained");
+                    };
+                    ((ra.id, ta), (rb.id, tb))
+                }
             };
             match diff::diff(&ta, &tb) {
                 None => println!("no difference"),
                 Some(c) if cli.json => print_json(&c)?,
                 Some(c) => {
-                    println!("{}  ({} → {})\n", c.summary(), ra.id.short(), rb.id.short());
+                    println!("{}  ({} → {})\n", c.summary(), ia.short(), ib.short());
                     print!("{}", c.unified);
                 }
             }

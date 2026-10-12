@@ -275,7 +275,7 @@ VERIFIED
 | `export URL\|ID [--at TIME] [--no-content] [-o FILE]` | Write an evidence bundle |
 | `warc URL\|ID -o FILE` | Rebuild a WARC 1.1 file for a capture |
 | `history URL` | All captures and detected changes |
-| `diff URL` / `diff ID ID` | Diff the last two versions, or two captures |
+| `diff URL` / `diff ID ID` / `diff --bundle FILE FILE` | Diff the last two versions, two captures, or two bundles (no node needed) |
 | `watch add\|rm\|list\|run [--once]` | Manage and run the watchlist |
 | `log head\|consistency OLD [NEW]\|audit` | Tree head, consistency proofs, full self-audit |
 | `purge URL [--forget]` | Erase stored content (and records); the log stays valid |
