@@ -1,13 +1,10 @@
 name: Release
 
 # Push a tag like v1.0.0 to build static Linux binaries and publish a
-# GitHub release with them, their checksums and the changelog entry.
+# Forgejo release with them, their checksums and the changelog entry.
 on:
   push:
     tags: ["v*"]
-
-permissions:
-  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,11 +16,11 @@ jobs:
       matrix:
         target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: https://github.com/actions/checkout@v7
+      - uses: https://github.com/dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: https://github.com/Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
       - name: Check the tag matches the crate version
@@ -41,7 +38,7 @@ jobs:
           cp target/${{ matrix.target }}/release/keepword "dist/$name/"
           cp LICENSE README.md CHANGELOG.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
-      - uses: actions/upload-artifact@v4
+      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: dist/*.tar.gz
@@ -50,8 +47,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: https://github.com/actions/checkout@v7
+      - uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
@@ -74,7 +71,7 @@ jobs:
           On a server, the installer builds from source and sets up the service:
 
           ```sh
-          git clone https://github.com/keepword-net/keepword.git && cd keepword
+          git clone https://git.keepword.net/keepword/keepword.git && cd keepword
           sudo sh scripts/install.sh --domain witness.example.org --caddy
           ```
 
@@ -83,7 +80,15 @@ jobs:
           EOF
       - name: Publish
         env:
-          GH_TOKEN: ${{ github.token }}
+          TOKEN: ${{ github.token }}
+          API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS \
-            --title "Keepword $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+          id=$(jq -n --arg tag "$GITHUB_REF_NAME" --rawfile body notes.md \
+                '{tag_name: $tag, name: "Keepword \($tag)", body: $body}' |
+            curl -fsS -X POST -H "Authorization: token $TOKEN" \
+              -H "Content-Type: application/json" --data @- "$API/releases" |
+            jq -r .id)
+          for f in dist/*.tar.gz dist/SHA256SUMS; do
+            curl -fsS -X POST -H "Authorization: token $TOKEN" \
+              -F "attachment=@$f" "$API/releases/$id/assets?name=$(basename "$f")" >/dev/null
+          done

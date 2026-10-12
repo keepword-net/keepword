@@ -29,6 +29,9 @@ witness.
 
 ### Changed
 
+- **The project moved to git.keepword.net/keepword/keepword**, a Forgejo
+  instance, and its CI to Forgejo Actions. The fetcher's user agent links
+  there, and the default seed is `https://seed1.keepword.net`.
 - **Normalized text is `keepword-norm/3`.** The normalizer has limits for
   hostile pages now, a link's text leaves out the links nested in it and
   only HTML `<a>` elements are links (see Fixed), and where tags are
