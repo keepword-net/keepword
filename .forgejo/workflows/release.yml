@@ -11,9 +11,7 @@ env:
 
 jobs:
   build:
-    runs-on: docker
-    container:
-      image: ghcr.io/catthehacker/ubuntu:act-24.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
@@ -50,9 +48,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: docker
-    container:
-      image: ghcr.io/catthehacker/ubuntu:act-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: https://github.com/actions/checkout@v7
       - uses: https://data.forgejo.org/forgejo/download-artifact@v4

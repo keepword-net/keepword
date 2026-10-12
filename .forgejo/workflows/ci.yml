@@ -10,9 +10,7 @@ env:
 
 jobs:
   test:
-    runs-on: docker
-    container:
-      image: ghcr.io/catthehacker/ubuntu:act-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: https://github.com/actions/checkout@v7
       - uses: https://github.com/dtolnay/rust-toolchain@stable
@@ -27,9 +25,7 @@ jobs:
   # The TLSNotary tier is its own workspace (large git dependencies, Rust
   # 1.95+). Release mode: MPC-TLS is slow unoptimized.
   tlsn:
-    runs-on: docker
-    container:
-      image: ghcr.io/catthehacker/ubuntu:act-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
