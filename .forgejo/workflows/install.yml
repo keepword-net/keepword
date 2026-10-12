@@ -9,15 +9,21 @@ jobs:
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: https://github.com/actions/checkout@v7
+      - run: command -v shellcheck || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
       - run: shellcheck -s sh scripts/install.sh scripts/ci/installer-smoke.sh packaging/docker/entrypoint.sh
 
   # A real systemd host: install, run, upgrade, purge. Nodes started in CI
   # never dial the default seeds: they would join the real network.
+  # The host runner persists, so clear what a failed run left behind.
   systemd:
-    runs-on: ubuntu-latest
+    runs-on: host
     steps:
-      - uses: actions/checkout@v7
+      - uses: https://github.com/actions/checkout@v7
+      - name: Clean up earlier runs
+        run: |
+          docker rm -f keepword-ci 2>/dev/null || true
+          if command -v keepword; then sudo sh scripts/install.sh --uninstall --purge --yes; fi
       - name: Install
         run: sudo sh scripts/install.sh --source . --yes --asn 64500 --country DE --peer https://peer.example.invalid --no-seeds
       - name: Service is up
@@ -46,35 +52,46 @@ jobs:
           test ! -e /var/lib/keepword
 
   # Fresh containers: package installation, rustup, build, service files.
+  # The job runs inside the distro image, which has no Node for
+  # actions/checkout, so it fetches the source with git.
   distros:
-    runs-on: ubuntu-latest
+    runs-on: docker
+    container:
+      image: ${{ matrix.image }}
+    defaults:
+      run:
+        shell: sh
     strategy:
       fail-fast: false
       matrix:
         include:
           - image: debian:bookworm
-            prep: apt-get update -qq && apt-get install -y -qq systemd curl >/dev/null
+            prep: apt-get update -qq && apt-get install -y -qq systemd curl git ca-certificates >/dev/null
             init: systemd
           - image: fedora:41
-            prep: dnf install -y -q systemd procps-ng
+            prep: dnf install -y -q systemd procps-ng git
             init: systemd
           - image: archlinux:latest
-            prep: pacman -Syu --noconfirm --needed systemd procps-ng >/dev/null
+            prep: pacman -Syu --noconfirm --needed systemd procps-ng git >/dev/null
             init: systemd
           - image: alpine:3.20
-            prep: apk add --no-cache -q openrc curl procps
+            prep: apk add --no-cache -q openrc curl procps git
             init: openrc
     steps:
-      - uses: actions/checkout@v7
-      - name: ${{ matrix.image }}
+      - name: Prepare ${{ matrix.image }}
+        run: ${{ matrix.prep }}
+      - name: Fetch the source
         run: |
-          docker run --rm -v "$PWD:/src:ro" "${{ matrix.image }}" \
-            sh -c '${{ matrix.prep }} && sh /src/scripts/ci/installer-smoke.sh ${{ matrix.init }}'
+          git init -q /src
+          git -C /src fetch -q --depth 1 "${{ github.server_url }}/${{ github.repository }}.git" "${{ github.ref }}"
+          git -C /src checkout -q FETCH_HEAD
+      - name: Installer smoke test
+        run: sh /src/scripts/ci/installer-smoke.sh ${{ matrix.init }}
 
   docker:
-    runs-on: ubuntu-latest
+    runs-on: host
     steps:
-      - uses: actions/checkout@v7
+      - uses: https://github.com/actions/checkout@v7
       - run: docker build -t keepword .
       - name: Container starts and configures itself
         run: |
@@ -91,3 +108,5 @@ jobs:
           docker exec keepword-ci keepword id
       - if: failure()
         run: docker logs keepword-ci
+      - if: always()
+        run: docker rm -f keepword-ci

@@ -12,7 +12,7 @@
 
 set -eu
 
-REPO_URL="https://github.com/keepword-net/keepword.git"
+REPO_URL="https://git.keepword.net/keepword/keepword.git"
 REPO_REF="main"
 PREFIX="/usr/local"
 DATA_DIR="/var/lib/keepword"
@@ -591,7 +591,7 @@ UMask=0027"
     cat >/etc/systemd/system/keepword.service <<EOF
 [Unit]
 Description=Keepword node
-Documentation=https://github.com/keepword-net/keepword
+Documentation=https://git.keepword.net/keepword/keepword
 After=network-online.target
 Wants=network-online.target
 

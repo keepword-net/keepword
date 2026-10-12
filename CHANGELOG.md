@@ -5,7 +5,7 @@ follow [Semantic Versioning](https://semver.org): from 1.0.0 on, the
 evidence formats (attestations, logs, bundles) and the network protocol
 only change incompatibly in a new major version.
 
-## [2.1.0] - Pre-release
+## [2.1.0] - 2026-10-10
 
 Fixes from an end-to-end bug hunt, most of them for what a hostile page or
 peer could make a witness do, and a logo. 2.0.0 and 2.1.0 witnesses
@@ -29,6 +29,9 @@ witness.
 
 ### Changed
 
+- **The project moved to git.keepword.net/keepword/keepword**, a Forgejo
+  instance, and its CI to Forgejo Actions. The fetcher's user agent links
+  there, and the default seed is `https://seed1.keepword.net`.
 - **Normalized text is `keepword-norm/3`.** The normalizer has limits for
   hostile pages now, a link's text leaves out the links nested in it and
   only HTML `<a>` elements are links (see Fixed), and where tags are
