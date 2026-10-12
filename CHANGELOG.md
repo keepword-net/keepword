@@ -7,6 +7,12 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+### Added
+
+- **`keepword diff --bundle A B`** diffs two bundle files with no node or
+  store, so whoever was sent two bundles can see what changed. Both must
+  verify and carry their normalized text.
+
 ### Fixed
 
 - **A change of status was classified as an edit.** A blip of errors had
@@ -17,13 +23,6 @@ only change incompatibly in a new major version.
   back from an error, with the last capture that succeeded the same way,
   so an edit can't hide behind a blip. The web UI's and `keepword diff`'s
   summaries follow suit.
-
-### Added
-
-- **`keepword diff --bundle A B`** diffs two bundle files with no node or
-  store, so whoever was sent two bundles can see what changed. Both must
-  verify and carry their normalized text.
-
 
 ## [2.1.0] - 2026-10-10
 
