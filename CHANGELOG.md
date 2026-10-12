@@ -5,6 +5,14 @@ follow [Semantic Versioning](https://semver.org): from 1.0.0 on, the
 evidence formats (attestations, logs, bundles) and the network protocol
 only change incompatibly in a new major version.
 
+## [Unreleased]
+
+### Added
+
+- **`keepword diff --bundle A B`** diffs two bundle files with no node or
+  store, so whoever was sent two bundles can see what changed. Both must
+  verify and carry their normalized text.
+
 ## [2.1.0] - 2026-10-10
 
 Fixes from an end-to-end bug hunt, most of them for what a hostile page or
