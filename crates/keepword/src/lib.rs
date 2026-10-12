@@ -522,6 +522,26 @@ impl Node {
         report
     }
 
+    /// A bundle's normalized text, to diff bundles without a store. Only
+    /// from a bundle that verifies, so the text is what was signed.
+    pub fn bundle_text(bundle: &Bundle) -> Result<String> {
+        let report = Self::verify_bundle(bundle);
+        let failed: Vec<_> = report
+            .checks
+            .iter()
+            .filter(|c| c.status == Status::Fail)
+            .map(|c| c.name.as_str())
+            .collect();
+        if !failed.is_empty() {
+            bail!("bundle fails verification ({})", failed.join(", "));
+        }
+        bundle
+            .content
+            .as_ref()
+            .and_then(|c| c.normalized.clone())
+            .context("bundle has no normalized text (exported with --no-content, or not retained)")
+    }
+
     /// Check the whole local log: every tree head is validly signed and
     /// consistent with the next, the latest matches the leaves, every indexed
     /// attestation verifies and sits at its leaf, and retained blobs are intact.

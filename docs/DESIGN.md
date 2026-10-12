@@ -169,7 +169,9 @@ the site rules behind the profile. Verification checks, independently:
    same profile. Otherwise it is skipped with the reason stated.
 
 Any piece can be withheld (after an erasure, say) without affecting the
-other checks. `keepword verify --bundle FILE` needs no node, key or network.
+other checks. `keepword verify --bundle FILE` needs no node, key or network,
+and neither does `keepword diff --bundle A B`, which diffs two bundles'
+normalized text once both verify.
 
 ## 4. Normalization (v3, implemented)
 

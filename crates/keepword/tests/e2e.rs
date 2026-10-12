@@ -161,6 +161,16 @@ async fn capture_detect_verify_purge() {
     let bare = node.bundle(&third.record, false).unwrap();
     assert!(Node::verify_bundle(&bare).ok());
 
+    // Two bundles diff with no store, but only by text that verifies.
+    let before = node.bundle(&first.record, true).unwrap();
+    let after = Node::bundle_text(&bundle).unwrap();
+    let d = keepword_normalize::diff::diff(&Node::bundle_text(&before).unwrap(), &after).unwrap();
+    assert!(d.unified.contains("+p: We may share your data."));
+    let mut forged = bundle.clone();
+    forged.content.as_mut().unwrap().normalized = Some(after.replace("may share", "never sell"));
+    assert!(Node::bundle_text(&forged).is_err());
+    assert!(Node::bundle_text(&bare).is_err());
+
     // Resolve by URL at a time and by ID prefix.
     let at = node
         .resolve(&url, Some(third.record.signed.attestation.fetched_at_ms))

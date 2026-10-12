@@ -18,6 +18,13 @@ only change incompatibly in a new major version.
   so an edit can't hide behind a blip. The web UI's and `keepword diff`'s
   summaries follow suit.
 
+### Added
+
+- **`keepword diff --bundle A B`** diffs two bundle files with no node or
+  store, so whoever was sent two bundles can see what changed. Both must
+  verify and carry their normalized text.
+
+
 ## [2.1.0] - 2026-10-10
 
 Fixes from an end-to-end bug hunt, most of them for what a hostile page or
