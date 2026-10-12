@@ -10,14 +10,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: https://github.com/actions/checkout@v7
+      - run: command -v shellcheck || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
       - run: shellcheck -s sh scripts/install.sh scripts/ci/installer-smoke.sh packaging/docker/entrypoint.sh
 
   # A real systemd host: install, run, upgrade, purge. Nodes started in CI
   # never dial the default seeds: they would join the real network.
+  # The host runner persists, so clear what a failed run left behind.
   systemd:
-    runs-on: ubuntu-latest
+    runs-on: host
     steps:
       - uses: https://github.com/actions/checkout@v7
+      - name: Clean up earlier runs
+        run: |
+          docker rm -f keepword-ci 2>/dev/null || true
+          if command -v keepword; then sudo sh scripts/install.sh --uninstall --purge --yes; fi
       - name: Install
         run: sudo sh scripts/install.sh --source . --yes --asn 64500 --country DE --peer https://peer.example.invalid --no-seeds
       - name: Service is up
@@ -47,7 +53,7 @@ jobs:
 
   # Fresh containers: package installation, rustup, build, service files.
   distros:
-    runs-on: ubuntu-latest
+    runs-on: host
     strategy:
       fail-fast: false
       matrix:
@@ -72,7 +78,7 @@ jobs:
             sh -c '${{ matrix.prep }} && sh /src/scripts/ci/installer-smoke.sh ${{ matrix.init }}'
 
   docker:
-    runs-on: ubuntu-latest
+    runs-on: host
     steps:
       - uses: https://github.com/actions/checkout@v7
       - run: docker build -t keepword .
@@ -91,3 +97,5 @@ jobs:
           docker exec keepword-ci keepword id
       - if: failure()
         run: docker logs keepword-ci
+      - if: always()
+        run: docker rm -f keepword-ci

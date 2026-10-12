@@ -28,7 +28,10 @@ jobs:
           version=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "keepword") | .version')
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != version $version"; exit 1; }
       - name: Install zig and cargo-zigbuild
-        run: pip install ziglang==0.13.0 cargo-zigbuild
+        run: |
+          python3 -m venv /tmp/zig || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-venv && python3 -m venv /tmp/zig; }
+          /tmp/zig/bin/pip install ziglang==0.13.0 cargo-zigbuild
+          echo /tmp/zig/bin >> "$GITHUB_PATH"
       - name: Build
         run: cargo zigbuild --release --locked -p keepword --target ${{ matrix.target }}
       - name: Package
