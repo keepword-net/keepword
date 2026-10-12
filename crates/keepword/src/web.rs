@@ -14,7 +14,7 @@ use keepword_core::{Digest, format_ms, now_ms, target};
 use keepword_normalize::diff::{self, OpTag};
 use keepword_store::Record;
 
-use crate::{Node, method_name};
+use crate::{Node, diff_summary, method_name};
 
 // ---------------------------------------------------------------- scheduler
 
@@ -343,8 +343,12 @@ async fn diff_page(
         Some(c) => {
             b.push_str(&format!(
                 "<p class='{}'>{}</p><div class='diff mono'>",
-                if c.is_silent() { "silent" } else { "" },
-                esc(&c.summary())
+                if c.is_silent() && fa.status == ta.status {
+                    "silent"
+                } else {
+                    ""
+                },
+                esc(&diff_summary(fa, ta, &c))
             ));
             // Show changes with three lines of context; collapse the rest.
             let near: Vec<bool> = (0..c.ops.len())

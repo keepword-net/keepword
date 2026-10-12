@@ -1,5 +1,6 @@
 //! End-to-end: a real HTTP server, a real node on disk, the whole pipeline.
 
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 
 use keepword::Node;
@@ -21,12 +22,18 @@ const PAGE: &str = r#"<!doctype html><html><head><title>Policy</title>
 
 /// Minimal HTTP/1.1 server whose page body can be swapped between requests.
 async fn serve(body: Arc<Mutex<String>>) -> String {
+    serve_status(body, Arc::new(AtomicU16::new(200))).await
+}
+
+/// `serve`, with the page's status swappable too.
+async fn serve_status(body: Arc<Mutex<String>>, status: Arc<AtomicU16>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         loop {
             let (mut sock, _) = listener.accept().await.unwrap();
             let body = body.clone();
+            let status = status.load(Ordering::Relaxed);
             tokio::spawn(async move {
                 let mut buf = vec![0u8; 8192];
                 let mut n = 0;
@@ -43,7 +50,7 @@ async fn serve(body: Arc<Mutex<String>>) -> String {
                 } else if path == "/page" {
                     let b = body.lock().unwrap().clone();
                     format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        "HTTP/1.1 {status} Status\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                         b.len(),
                         b
                     )
@@ -216,6 +223,52 @@ async fn refuses_private_targets_by_default() {
         .await
         .unwrap_err();
     assert!(format!("{err:#}").contains("non-public"), "{err:#}");
+}
+
+/// A blip of errors changes the status, which is no edit, silent or
+/// disclosed; an edit made during one is still found.
+#[tokio::test]
+async fn status_changes_arent_edits() {
+    // A notice the error page lacks would make the way back "disclosed".
+    let page = PAGE.replace("<p>Contact", "<p>Updated: see section 2.</p><p>Contact");
+    let body = Arc::new(Mutex::new(page.clone()));
+    let status = Arc::new(AtomicU16::new(200));
+    let base = serve_status(body.clone(), status.clone()).await;
+    let url = format!("{base}/page");
+    let tmp = tempfile::tempdir().unwrap();
+    let node = node(tmp.path(), true);
+    let serve = |s: u16, b: &str| {
+        status.store(s, Ordering::Relaxed);
+        *body.lock().unwrap() = b.to_string();
+    };
+    let denied = "<html><body><h1>Access denied</h1></body></html>";
+
+    node.capture(&url, false).await.unwrap();
+    serve(403, denied);
+    let c = node.capture(&url, false).await.unwrap().change.unwrap();
+    assert_eq!(c.summary, "status 200 → 403");
+    assert!(!c.silent && c.diff.is_none());
+    serve(200, &page);
+    let back = node.capture(&url, false).await.unwrap();
+    assert_eq!(back.change.unwrap().summary, "status 403 → 200");
+
+    serve(403, denied);
+    node.capture(&url, false).await.unwrap();
+    serve(200, &page.replace("never sell", "may share"));
+    let c = node.capture(&url, false).await.unwrap().change.unwrap();
+    assert!(c.silent, "{}", c.summary);
+    assert!(
+        c.summary.starts_with("status 403 → 200; silent edit"),
+        "{}",
+        c.summary
+    );
+
+    let changes = node.store.changes(Some(&url), 10).unwrap();
+    assert_eq!(changes.len(), 5);
+    let silent: Vec<_> = changes.iter().filter(|c| c.silent).collect();
+    assert_eq!(silent.len(), 1);
+    assert_eq!(silent[0].from_id, back.record.id);
+    assert_eq!(node.store.alerts(10).unwrap().len(), 1);
 }
 
 /// The audit checks a store that may have been tampered with: log leaves

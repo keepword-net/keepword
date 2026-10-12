@@ -234,12 +234,24 @@ impl Node {
         }
 
         let prev = self.store.latest(&signed.attestation.url, c.method)?;
+        // Content is only compared between captures that got the same
+        // status: an error page against the page is no edit. Back from an
+        // error, it is compared with the last capture that succeeded the
+        // same way, so an edit can't hide behind a blip.
+        let base = match &prev {
+            Some(p) if p.signed.attestation.status == c.status => prev.clone(),
+            Some(_) if (200..300).contains(&c.status) => {
+                self.store
+                    .latest_with_status(&signed.attestation.url, c.method, c.status)?
+            }
+            _ => None,
+        };
         let (record, tree_head) = self.store.commit(&signed, &self.key, now_ms())?;
         let compared = prev.as_ref().is_some_and(|p| {
             keepword_core::quorum::comparable(&p.signed.attestation, &record.signed.attestation)
         });
         let change = match &prev {
-            Some(p) => self.detect_change(p, &record)?,
+            Some(p) => self.detect_change(p, base.as_ref(), &record)?,
             None => None,
         };
         Ok(Outcome {
@@ -251,49 +263,63 @@ impl Node {
         })
     }
 
-    fn detect_change(&self, prev: &Record, cur: &Record) -> Result<Option<ChangeInfo>> {
+    /// Record a change of status since `prev`, and of content since `base`,
+    /// a capture that got the same status.
+    fn detect_change(
+        &self,
+        prev: &Record,
+        base: Option<&Record>,
+        cur: &Record,
+    ) -> Result<Option<ChangeInfo>> {
         let (a, b) = (&prev.signed.attestation, &cur.signed.attestation);
+        let status = (a.status != b.status).then(|| format!("status {} → {}", a.status, b.status));
+        if let Some(s) = &status {
+            self.record_change(prev, cur, s, false, None)?;
+        }
+        let edit = match base {
+            Some(base) => self.detect_edit(base, cur)?.map(|e| (base, e)),
+            None => None,
+        };
+        Ok(match (status, edit) {
+            (None, edit) => edit.map(|(_, e)| e),
+            (Some(s), Some((base, e))) => Some(ChangeInfo {
+                summary: format!("{s}; {} since {}", e.summary, base.id.short()),
+                ..e
+            }),
+            (Some(summary), None) => Some(ChangeInfo {
+                summary,
+                silent: false,
+                diff: None,
+            }),
+        })
+    }
+
+    fn detect_edit(&self, base: &Record, cur: &Record) -> Result<Option<ChangeInfo>> {
+        let (a, b) = (&base.signed.attestation, &cur.signed.attestation);
         if !keepword_core::quorum::comparable(a, b) {
             // Normalizer version or site rules changed; hashes aren't comparable.
             return Ok(None);
         }
-        if a.comparison_hash() == b.comparison_hash() && a.status == b.status {
+        if a.comparison_hash() == b.comparison_hash() {
             return Ok(None);
         }
         let diff = match (self.normalized_text(a)?, self.normalized_text(b)?) {
             (Some(old), Some(new)) => diff::diff(&old, &new),
             _ => None,
         };
-        let mut summary = match &diff {
+        let summary = match &diff {
             Some(d) => d.summary(),
-            None if a.comparison_hash() != b.comparison_hash() => {
-                "content changed (normalized text not retained)".to_string()
-            }
-            None => "status changed".to_string(),
+            None => "content changed (normalized text not retained)".to_string(),
         };
-        if a.status != b.status {
-            summary = format!("status {} → {}; {summary}", a.status, b.status);
-        }
         // Without the text we can't look for a notice, so don't call it silent.
         let silent = diff.as_ref().is_some_and(Change::is_silent);
-        let row = ChangeRow {
-            seq: 0,
-            url: b.url.clone(),
-            from_id: prev.id,
-            to_id: cur.id,
-            detected_at: now_ms(),
-            silent,
-            added: diff.as_ref().map_or(0, |d| d.added as u64),
-            removed: diff.as_ref().map_or(0, |d| d.removed as u64),
-            summary: summary.clone(),
-        };
-        self.store.record_change(&row)?;
+        self.record_change(base, cur, &summary, silent, diff.as_ref())?;
         if silent {
             self.raise_alert(
                 keepword_core::net::AlertKind::SilentEdit,
                 Some(&b.url),
                 summary.clone(),
-                vec![prev.id, cur.id],
+                vec![base.id, cur.id],
             )?;
         }
         Ok(Some(ChangeInfo {
@@ -301,6 +327,28 @@ impl Node {
             silent,
             diff,
         }))
+    }
+
+    fn record_change(
+        &self,
+        from: &Record,
+        to: &Record,
+        summary: &str,
+        silent: bool,
+        diff: Option<&Change>,
+    ) -> Result<()> {
+        self.store.record_change(&ChangeRow {
+            seq: 0,
+            url: to.signed.attestation.url.clone(),
+            from_id: from.id,
+            to_id: to.id,
+            detected_at: now_ms(),
+            silent,
+            added: diff.map_or(0, |d| d.added as u64),
+            removed: diff.map_or(0, |d| d.removed as u64),
+            summary: summary.to_string(),
+        })?;
+        Ok(())
     }
 
     pub fn normalized_text(&self, a: &Attestation) -> Result<Option<String>> {
@@ -602,6 +650,19 @@ pub fn parse_time(s: &str) -> Result<i64> {
         .expect("valid time")
         .assume_utc();
     Ok((end.unix_timestamp_nanos() / 1_000_000) as i64)
+}
+
+/// A diff's summary. Between captures that got different statuses, it is
+/// an error page against the page: no edit, disclosed or silent.
+pub fn diff_summary(a: &Attestation, b: &Attestation, d: &Change) -> String {
+    if a.status == b.status {
+        d.summary()
+    } else {
+        format!(
+            "status {} → {}: +{} -{} lines",
+            a.status, b.status, d.added, d.removed
+        )
+    }
 }
 
 /// Method name for display.

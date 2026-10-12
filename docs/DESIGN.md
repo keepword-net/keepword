@@ -246,6 +246,12 @@ change is recorded but never labelled silent. A diff looks for the fewest
 changes for a second at most; after that, the rest of it shows as
 replaced.
 
+Only captures that got the same status are compared: a change of status,
+say a 403 blip, is recorded as just that, as an error page against the
+page says nothing about an edit. Back from an error, a page is compared
+with the last capture that succeeded the same way, so an edit can't hide
+behind one.
+
 ### Regression corpus
 
 `crates/keepword-normalize/tests/corpus/` holds pages modelled on common
@@ -288,8 +294,8 @@ The capture pipeline is: canonicalize URL → take a recent drand beacon →
 fetch → normalize with the host's rules → build attestation → sign → store
 blobs (per retention) → in one fully durable SQLite transaction insert the
 attestation, append its ID to the log and sign the new tree head → compare
-with the previous capture of the same URL and method → record a change, and
-raise a silent-edit alert if the publisher didn't disclose it.
+with the previous capture of the same URL, method and status → record a
+change, and raise a silent-edit alert if the publisher didn't disclose it.
 
 `keepword log audit` re-verifies everything: every tree head's signature,
 root and consistency with the next; every attestation's signature, ID and

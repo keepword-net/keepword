@@ -504,7 +504,9 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                 None => println!("no difference"),
                 Some(c) if cli.json => print_json(&c)?,
                 Some(c) => {
-                    println!("{}  ({} → {})\n", c.summary(), ra.id.short(), rb.id.short());
+                    let s =
+                        keepword::diff_summary(&ra.signed.attestation, &rb.signed.attestation, &c);
+                    println!("{s}  ({} → {})\n", ra.id.short(), rb.id.short());
                     print!("{}", c.unified);
                 }
             }
