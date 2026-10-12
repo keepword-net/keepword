@@ -7,7 +7,9 @@ on:
 
 jobs:
   shellcheck:
-    runs-on: ubuntu-latest
+    runs-on: docker
+    container:
+      image: ghcr.io/catthehacker/ubuntu:act-24.04
     steps:
       - uses: https://github.com/actions/checkout@v7
       - run: command -v shellcheck || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
@@ -52,30 +54,41 @@ jobs:
           test ! -e /var/lib/keepword
 
   # Fresh containers: package installation, rustup, build, service files.
+  # The job runs inside the distro image, which has no Node for
+  # actions/checkout, so it fetches the source with git.
   distros:
-    runs-on: host
+    runs-on: docker
+    container:
+      image: ${{ matrix.image }}
+    defaults:
+      run:
+        shell: sh
     strategy:
       fail-fast: false
       matrix:
         include:
           - image: debian:bookworm
-            prep: apt-get update -qq && apt-get install -y -qq systemd curl >/dev/null
+            prep: apt-get update -qq && apt-get install -y -qq systemd curl git ca-certificates >/dev/null
             init: systemd
           - image: fedora:41
-            prep: dnf install -y -q systemd procps-ng
+            prep: dnf install -y -q systemd procps-ng git
             init: systemd
           - image: archlinux:latest
-            prep: pacman -Syu --noconfirm --needed systemd procps-ng >/dev/null
+            prep: pacman -Syu --noconfirm --needed systemd procps-ng git >/dev/null
             init: systemd
           - image: alpine:3.20
-            prep: apk add --no-cache -q openrc curl procps
+            prep: apk add --no-cache -q openrc curl procps git
             init: openrc
     steps:
-      - uses: https://github.com/actions/checkout@v7
-      - name: ${{ matrix.image }}
+      - name: Prepare ${{ matrix.image }}
+        run: ${{ matrix.prep }}
+      - name: Fetch the source
         run: |
-          docker run --rm -v "$PWD:/src:ro" "${{ matrix.image }}" \
-            sh -c '${{ matrix.prep }} && sh /src/scripts/ci/installer-smoke.sh ${{ matrix.init }}'
+          git init -q /src
+          git -C /src fetch -q --depth 1 "${{ github.server_url }}/${{ github.repository }}.git" "${{ github.ref }}"
+          git -C /src checkout -q FETCH_HEAD
+      - name: Installer smoke test
+        run: sh /src/scripts/ci/installer-smoke.sh ${{ matrix.init }}
 
   docker:
     runs-on: host
