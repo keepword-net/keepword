@@ -448,10 +448,10 @@ produce evidence anyone can verify offline.
 - A private web UI with history, diffs, verdicts, alerts and the network.
 - Licensed under the GNU AGPL v3.
 
-[2.1.0]: https://github.com/keepword-net/keepword/releases/tag/v2.1.0
-[2.0.0]: https://github.com/keepword-net/keepword/releases/tag/v2.0.0
-[1.2.0]: https://github.com/keepword-net/keepword/releases/tag/v1.2.0
-[1.1.1]: https://github.com/keepword-net/keepword/releases/tag/v1.1.1
-[1.1.0]: https://github.com/keepword-net/keepword/releases/tag/v1.1.0
-[1.0.1]: https://github.com/keepword-net/keepword/releases/tag/v1.0.1
-[1.0.0]: https://github.com/keepword-net/keepword/releases/tag/v1.0.0
+[2.1.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.1.0
+[2.0.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.0.0
+[1.2.0]: https://git.keepword.net/keepword/keepword/releases/tag/v1.2.0
+[1.1.1]: https://git.keepword.net/keepword/keepword/releases/tag/v1.1.1
+[1.1.0]: https://git.keepword.net/keepword/keepword/releases/tag/v1.1.0
+[1.0.1]: https://git.keepword.net/keepword/keepword/commit/ab4697ece6212704b16d518cc8bd8e7c1e0b3470
+[1.0.0]: https://git.keepword.net/keepword/keepword/releases/tag/v1.0.0
