@@ -13,6 +13,17 @@ only change incompatibly in a new major version.
   store, so whoever was sent two bundles can see what changed. Both must
   verify and carry their normalized text.
 
+### Fixed
+
+- **A change of status was classified as an edit.** A blip of errors had
+  the error page diffed against the page: going to a 403 raised a
+  silent-edit alert, and coming back was a "disclosed edit" if the page
+  had an update notice. A status change is now recorded as just that, and
+  content is only compared between captures that got the same status;
+  back from an error, with the last capture that succeeded the same way,
+  so an edit can't hide behind a blip. The web UI's and `keepword diff`'s
+  summaries follow suit.
+
 ## [2.1.0] - 2026-10-10
 
 Fixes from an end-to-end bug hunt, most of them for what a hostile page or

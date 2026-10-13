@@ -485,7 +485,7 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
             }
         }
         Cmd::Diff { a, b, bundle } => {
-            let ((ia, ta), (ib, tb)) = match bundle {
+            let ((ia, aa, ta), (ib, ab, tb)) = match bundle {
                 Some(paths) => {
                     let side = |path: &PathBuf| -> Result<_> {
                         let b = read_bundle(path)?;
@@ -499,7 +499,7 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                             "warning: the bundles were captured or normalized differently; the diff shows that too"
                         );
                     }
-                    ((sa.id(), ta), (sb.id(), tb))
+                    ((sa.id(), sa.attestation, ta), (sb.id(), sb.attestation, tb))
                 }
                 None => {
                     let node = Node::open(&dir)?;
@@ -530,14 +530,18 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     ) else {
                         bail!("normalized text for one of the captures was not retained");
                     };
-                    ((ra.id, ta), (rb.id, tb))
+                    (
+                        (ra.id, ra.signed.attestation, ta),
+                        (rb.id, rb.signed.attestation, tb),
+                    )
                 }
             };
             match diff::diff(&ta, &tb) {
                 None => println!("no difference"),
                 Some(c) if cli.json => print_json(&c)?,
                 Some(c) => {
-                    println!("{}  ({} → {})\n", c.summary(), ia.short(), ib.short());
+                    let s = keepword::diff_summary(&aa, &ab, &c);
+                    println!("{s}  ({} → {})\n", ia.short(), ib.short());
                     print!("{}", c.unified);
                 }
             }

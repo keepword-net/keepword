@@ -436,6 +436,26 @@ impl Store {
             .pop())
     }
 
+    /// The last capture that got `status`.
+    pub fn latest_with_status(
+        &self,
+        url: &str,
+        method: CaptureMethod,
+        status: u16,
+    ) -> Result<Option<Record>> {
+        Ok(self
+            .records(
+                &format!(
+                    "{} WHERE a.url = ?1 AND a.method = ?2
+                       AND json_extract(a.json, '$.attestation.status') = ?3
+                     ORDER BY a.fetched_at DESC, l.idx DESC LIMIT 1",
+                    Self::SELECT
+                ),
+                params![url, method.code(), status],
+            )?
+            .pop())
+    }
+
     /// The last capture at or before `at_ms`.
     pub fn at(&self, url: &str, at_ms: i64) -> Result<Option<Record>> {
         Ok(self
