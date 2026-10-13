@@ -15,6 +15,12 @@
   Keepword is a network of independent witnesses whose records anyone can check.</b>
 </p>
 
+<p align="center">
+  <a href="https://keepword.net/network/"><b>Run a witness</b></a> ·
+  <a href="https://keepword.net/install/">Install</a> ·
+  <a href="docs/DESIGN.md">How it works</a>
+</p>
+
 ---
 
 ## Web pages don't keep their word
@@ -127,8 +133,9 @@ Every check says exactly what it proves, and what it doesn't.
 
 - ⭐ **Star the repo** to follow along.
 - 🖥️ **Run a witness.** The network gets stronger with every witness in a
-  new country or network. One command sets up a server:
-  [docs/NETWORK.md](docs/NETWORK.md).
+  new country or network. A small server and one command is all it takes:
+  [keepword.net/network](https://keepword.net/network/) (or the full guide in
+  [docs/NETWORK.md](docs/NETWORK.md)).
 - 🔍 **Watch a page that matters to you.** Install a node and ask the
   network to keep an eye on it.
 - 🛠️ **Build with us.** Everything is in Rust, tested end to end, and
