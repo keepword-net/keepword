@@ -18,7 +18,7 @@
 <p align="center">
   <a href="https://keepword.net/network/"><b>Run a witness</b></a> ·
   <a href="https://keepword.net/install/">Install</a> ·
-  <a href="docs/DESIGN.md">How it works</a>
+  <a href="https://git.keepword.net/keepword/keepword/src/branch/main/docs/DESIGN.md">How it works</a>
 </p>
 
 ---
