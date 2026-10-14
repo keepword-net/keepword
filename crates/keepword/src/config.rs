@@ -301,7 +301,7 @@ pub struct ContentConfig {
 impl Default for ContentConfig {
     fn default() -> Self {
         ContentConfig {
-            retain: Retain::Full,
+            retain: Retain::Normalized,
         }
     }
 }

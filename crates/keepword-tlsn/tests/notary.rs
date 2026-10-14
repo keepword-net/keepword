@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use keepword::Node;
-use keepword::config::Config;
+use keepword::config::{Config, Retain};
 use keepword_core::bundle::Status;
 use keepword_core::statement::Signed;
 use keepword_core::{Digest, now_ms};
@@ -55,6 +55,7 @@ async fn serve_page(sock: DuplexStream) {
 
 fn node(dir: &std::path::Path) -> Node {
     let mut cfg = Config::default();
+    cfg.content.retain = Retain::Full;
     cfg.beacon.drand_url = Some(String::new());
     cfg.anchor.calendars = vec![];
     Node::init(dir, &cfg).unwrap();

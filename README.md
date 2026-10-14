@@ -310,9 +310,9 @@ just works on an installed node.
 `keepword-data/keepword.toml`; see [docs/keepword.example.toml](docs/keepword.example.toml).
 The important settings:
 
-- `content.retain`: what to keep. `full`, `normalized` (diffs without raw
-  bytes) or `none` (hashes only). Attestations and the log never contain
-  page content.
+- `content.retain`: what to keep. `normalized` (the default: diffs without
+  raw bytes), `full` (raw bytes too) or `none` (hashes only). Attestations
+  and the log never contain page content.
 - `[[rules]]`: per-site normalization (extra elements to drop, content
   root). Rules are part of the normalizer profile each attestation commits
   to.

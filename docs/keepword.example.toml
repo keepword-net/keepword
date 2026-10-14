@@ -20,9 +20,9 @@ allow_private_addresses = false
 
 [content]
 # full        headers + raw body + normalized text (evidence and diffs)
-# normalized  headers + normalized text (diffs, no raw copy)
+# normalized  headers + normalized text (diffs, no raw copy; the default)
 # none        hashes only (edits detected, not shown)
-retain = "full"
+retain = "normalized"
 
 [network]
 # Public base URL of this node's /v1 API. Unset = push-only (behind NAT).

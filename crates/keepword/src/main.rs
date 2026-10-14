@@ -40,7 +40,7 @@ enum Cmd {
         #[arg(long)]
         country: Option<String>,
         /// What content to keep: full, normalized or none.
-        #[arg(long, default_value = "full", value_parser = parse_retain)]
+        #[arg(long, default_value = "normalized", value_parser = parse_retain)]
         retain: Retain,
     },
     /// Show this node's identity and log head.

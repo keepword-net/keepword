@@ -3,7 +3,7 @@
 # apply the network settings and keep the IP-to-ASN table fresh.
 #
 #   KEEPWORD_ASN, KEEPWORD_COUNTRY   where this node is (self-reported)
-#   KEEPWORD_RETAIN                  full | normalized | none (first start only)
+#   KEEPWORD_RETAIN                  full | normalized (default) | none (first start only)
 #   KEEPWORD_ENDPOINT                public URL of the peer API
 #   KEEPWORD_PEERS                   comma-separated bootstrap peer URLs
 #   KEEPWORD_SEEDS=0                 don't join through the default seeds
@@ -17,7 +17,7 @@ dir=${KEEPWORD_DIR:-/data}
 cfg() { keepword config set "$1" "$2"; }
 
 if [ ! -f "$dir/keepword.toml" ]; then
-    init_args="--retain ${KEEPWORD_RETAIN:-full}"
+    init_args="--retain ${KEEPWORD_RETAIN:-normalized}"
     [ -z "${KEEPWORD_ASN:-}" ] || init_args="$init_args --asn $KEEPWORD_ASN"
     [ -z "${KEEPWORD_COUNTRY:-}" ] || init_args="$init_args --country $KEEPWORD_COUNTRY"
     # shellcheck disable=SC2086

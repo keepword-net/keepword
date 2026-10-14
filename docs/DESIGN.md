@@ -687,9 +687,9 @@ Not legal advice, and German law in particular deserves a lawyer's review
 before public operation. The design aims to leave room for compliance.
 
 - **Retention levels (implemented):** `full` (headers + body + normalized
-  text), `normalized` (headers + normalized text; diffs still work), or
-  `none` (hashes only; edits detected but not shown). Hashes, attestations
-  and the log never contain page content.
+  text), `normalized` (headers + normalized text; diffs still work; the
+  default), or `none` (hashes only; edits detected but not shown). Hashes,
+  attestations and the log never contain page content.
 - **Erasure (implemented):** `keepword purge URL` deletes a URL's blobs
   unless another URL still references the same bytes. `--forget` also
   deletes its attestation rows. The log keeps only opaque IDs, so every

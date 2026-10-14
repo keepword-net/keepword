@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 
 use keepword::Node;
-use keepword::config::Config;
+use keepword::config::{Config, Retain};
 use keepword_core::bundle::{Bundle, Content, Status};
 use keepword_core::now_ms;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -68,6 +68,7 @@ async fn serve_status(body: Arc<Mutex<String>>, status: Arc<AtomicU16>) -> Strin
 fn node(dir: &std::path::Path, allow_private: bool) -> Node {
     let mut cfg = Config::default();
     cfg.capture.allow_private_addresses = allow_private;
+    cfg.content.retain = Retain::Full;
     cfg.vantage.asn = Some(64496);
     cfg.vantage.country = Some("DE".into());
     cfg.beacon.drand_url = None;
