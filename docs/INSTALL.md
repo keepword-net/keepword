@@ -2,9 +2,10 @@
 
 There are two supported ways to run a node in production:
 
-- **The installer** (`scripts/install.sh`) builds Keepword from source and sets
-  it up as a hardened system service. It supports Debian, Ubuntu, Fedora,
-  RHEL-likes, Arch, openSUSE and Alpine, with systemd or OpenRC.
+- **The installer** (`scripts/install.sh`) builds Keepword from source, or
+  downloads the latest release's static binary, and sets it up as a hardened
+  system service. It supports Debian, Ubuntu, Fedora, RHEL-likes, Arch,
+  openSUSE and Alpine, with systemd or OpenRC.
 - **The container image** (`Dockerfile`) is for Docker, Podman, NAS boxes and
   Kubernetes.
 
@@ -16,15 +17,31 @@ cd keepword
 sudo sh scripts/install.sh --domain witness.example.org --caddy
 ```
 
-That single command:
+Or in one line, without a checkout or a build: `--binary` installs the latest
+release's static binary (x86_64 or arm64), which suits small machines that
+would take long to compile it:
 
-1. installs build dependencies with the system package manager (and Caddy
-   when you pass `--caddy`). On Arch this is a full `pacman -Syu`, because
-   Arch doesn't support partial upgrades; use `--no-packages` to manage
-   packages yourself;
+```sh
+curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
+    | sudo sh -s -- --binary --domain witness.example.org --caddy
+```
+
+Release binaries don't include headless rendering or the TLSNotary tier, so
+`--render` and `--notary` need a build. Piped without `--binary`, the
+installer clones the source and builds it. `--ref vX.Y.Z` picks a release
+other than the latest.
+
+The installer:
+
+1. installs dependencies with the system package manager: build tools, or
+   just `curl` and `tar` with `--binary` (and Caddy when you pass `--caddy`).
+   On Arch this is a full `pacman -Syu`, because Arch doesn't support
+   partial upgrades; use `--no-packages` to manage packages yourself;
 2. installs Rust into `/opt/keepword` if the system Rust is missing or too
-   old, verifying the `rustup-init` checksum;
-3. builds `keepword` in release mode and installs it to `/usr/local/bin`;
+   old, verifying the `rustup-init` checksum (not with `--binary`);
+3. builds `keepword` in release mode, or downloads the release binary and
+   checks it against the release's `SHA256SUMS`, and installs it to
+   `/usr/local/bin`;
 4. creates a `keepword` system user and `/var/lib/keepword` (mode 0750);
 5. creates the node: key, config and empty log;
 6. downloads the IP-to-ASN table from iptoasn.com and schedules a weekly
@@ -35,8 +52,8 @@ That single command:
 9. installs and starts a sandboxed service, then checks that the API
    answers.
 
-Re-running the installer **upgrades in place**: it rebuilds, reinstalls and
-restarts, and never touches the key or data. Options given on the re-run are
+Re-running the installer **upgrades in place**: it rebuilds (or downloads the
+latest release), reinstalls and restarts, and never touches the key or data. Options given on the re-run are
 applied to the existing configuration.
 
 ### Common setups
@@ -60,8 +77,8 @@ sudo sh scripts/install.sh --domain witness.example.org --caddy --render --notar
 ```
 
 `sh scripts/install.sh --help` lists every option. `--source DIR` builds a
-local checkout. Without it, the installer builds the checkout it was run
-from, or clones `--repo`/`--ref` into `/opt/keepword/src`.
+local checkout. Without it (and without `--binary`), the installer builds the
+checkout it was run from, or clones `--repo`/`--ref` into `/opt/keepword/src`.
 
 ### What gets installed
 

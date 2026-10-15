@@ -1,19 +1,28 @@
 #!/bin/sh
 # Keepword production installer.
 #
-# Builds Keepword from source and sets it up as a hardened system service:
-# a dedicated user, a data directory, an IP-to-ASN table that refreshes
-# weekly, systemd (or OpenRC) units, and optionally a TLS reverse proxy
-# (Caddy) and the TLSNotary notary service.
+# Builds Keepword from source, or with --binary downloads the latest release's
+# static binary, and sets it up as a hardened system service: a dedicated
+# user, a data directory, an IP-to-ASN table that refreshes weekly, systemd
+# (or OpenRC) units, and optionally a TLS reverse proxy (Caddy) and the
+# TLSNotary notary service.
 #
 # Supported: Debian, Ubuntu, Fedora, RHEL-likes, Arch, openSUSE, Alpine.
 # Re-running upgrades an existing installation in place; the witness key and
-# data are never touched. Run with --help for options.
+# data are never touched. Run with --help for options. It also runs piped:
+#
+#   curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
+#       | sudo sh -s -- --binary --domain witness.example.org --caddy
+
+# The script is one { } block: the shell reads all of it before running any,
+# so a download cut short runs nothing, and commands that read stdin can't
+# swallow the rest of a piped script.
+{
 
 set -eu
 
 REPO_URL="https://git.keepword.net/keepword/keepword.git"
-REPO_REF="main"
+REPO_REF=""
 PREFIX="/usr/local"
 DATA_DIR="/var/lib/keepword"
 OPT_DIR="/opt/keepword"
@@ -21,11 +30,13 @@ SVC_USER="keepword"
 UI_ADDR="127.0.0.1:8480"
 API_ADDR="127.0.0.1:8481"
 NOTARY_ADDR="0.0.0.0:8482"
+DOCS="https://git.keepword.net/keepword/keepword/src/branch/main/docs"
 ASN_DB_URL="https://iptoasn.com/data/ip2asn-combined.tsv.gz"
 MIN_RUST="1.85"
 NOTARY_MIN_RUST="1.95"
 
 SOURCE=""
+BINARY=0
 ASN=""
 COUNTRY=""
 DOMAIN=""
@@ -49,6 +60,7 @@ PURGE=0
 usage() {
     cat <<'EOF'
 Usage: install.sh [options]
+       curl -fsSL URL/scripts/install.sh | sudo sh -s -- [options]
 
 Where this node is (self-reported; peers corroborate it):
   --asn N               Autonomous system number, e.g. 3320
@@ -73,16 +85,21 @@ Features:
   --notary              Build the TLSNotary tier and run a notary on :8482
 
 Installation:
+  --binary              Install the latest release's static binary instead of
+                        building: no compiler or Rust, for small machines
+                        (x86_64 and arm64; not with --render or --notary)
   --source DIR          Build from a local checkout
-  --repo URL            Git repository (default: keepword-net/keepword on GitHub)
-  --ref REF             Branch or tag (default: main)
+  --repo URL            Git repository (default: git.keepword.net/keepword/keepword)
+  --ref REF             Branch or tag to build (default: main); with --binary,
+                        the release tag (default: the latest release)
   --prefix DIR          Binary prefix (default: /usr/local)
   --data-dir DIR        Data directory (default: /var/lib/keepword)
   --no-start            Install and configure, but don't start services
   --init SYSTEM         systemd | openrc | none (default: detect); set it when
                         installing into an image or chroot
-  --no-packages         Don't install system packages (you provide a C
-                        compiler, git, curl, and Chromium/Caddy if used)
+  --no-packages         Don't install system packages (you provide curl, a C
+                        compiler and git, or tar with --binary, and
+                        Chromium/Caddy if used)
   -y, --yes             Don't ask for confirmation
 
   --uninstall           Remove services and binaries, keep data
@@ -124,6 +141,7 @@ while [ $# -gt 0 ]; do
         --retain) need_arg "$@"; RETAIN=$2; shift ;;
         --render) RENDER=1 ;;
         --notary) NOTARY=1 ;;
+        --binary) BINARY=1 ;;
         --source) need_arg "$@"; SOURCE=$2; shift ;;
         --repo) need_arg "$@"; REPO_URL=$2; shift ;;
         --ref) need_arg "$@"; REPO_REF=$2; shift ;;
@@ -148,6 +166,11 @@ case "$RETAIN" in ''|full|normalized|none) ;; *) die "--retain must be full, nor
 [ -z "$DOMAIN" ] || [ -z "$PUBLIC_API" ] || die "use either --domain or --public-api, not both"
 [ "$PURGE" -eq 0 ] || [ "$UNINSTALL" -eq 1 ] || die "--purge only works with --uninstall"
 case "$INIT" in ''|systemd|openrc|none) ;; *) die "--init must be systemd, openrc or none" ;; esac
+if [ "$BINARY" -eq 1 ]; then
+    [ -z "$SOURCE" ] || die "use either --binary or --source, not both"
+    [ "$RENDER" -eq 0 ] || die "--render needs a source build: release binaries don't include it"
+    [ "$NOTARY" -eq 0 ] || die "--notary needs a source build: release binaries don't include it"
+fi
 
 BIN="$PREFIX/bin"
 LIBEXEC="$PREFIX/lib/keepword"
@@ -199,9 +222,10 @@ keepword() { as_keepword env KEEPWORD_DIR="$DATA_DIR" HOME="$DATA_DIR" "$BIN/kee
 
 confirm() {
     [ "$YES" -eq 1 ] && return 0
-    [ -t 0 ] || die "not a terminal; re-run with --yes to proceed"
+    # Ask the terminal, not stdin: under curl | sh, stdin is the script.
+    (: </dev/tty) 2>/dev/null || die "not a terminal; re-run with --yes to proceed"
     printf '%s [y/N] ' "$1"
-    read -r answer
+    read -r answer </dev/tty
     case "$answer" in y|Y|yes|YES) return 0 ;; *) die "aborted" ;; esac
 }
 
@@ -275,7 +299,7 @@ UPGRADE=0
 step "Keepword installer"
 info "system:   $DISTRO, packages via ${PKG:-none}, services via $INIT"
 info "data:     $DATA_DIR$( [ "$UPGRADE" -eq 1 ] && printf ' (existing node: upgrade in place)')"
-info "binaries: $BIN"
+info "binaries: $BIN$( [ "$BINARY" -eq 1 ] && printf ' (release binary, no build)')"
 [ -z "$ENDPOINT" ] || info "endpoint: $ENDPOINT"
 [ "$RENDER" -eq 0 ] || info "extras:   headless rendering (Chromium)"
 [ "$NOTARY" -eq 0 ] || info "extras:   TLSNotary notary on $NOTARY_ADDR"
@@ -286,11 +310,13 @@ confirm "Proceed?"
 
 step "Installing system packages"
 [ "$PACKAGES" -eq 1 ] || PKG="skip"
+# with_build "PACKAGES": the build tools, or just tar for a release binary.
+with_build() { if [ "$BINARY" -eq 1 ]; then printf 'tar'; else printf '%s' "$1"; fi; }
 case "$PKG" in
     apt-get)
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
-        pkgs="ca-certificates curl git gcc g++ make pkg-config gzip util-linux"
+        pkgs="ca-certificates curl gzip util-linux $(with_build "git gcc g++ make pkg-config")"
         if [ "$RENDER" -eq 1 ]; then
             if [ "$DISTRO" = "ubuntu" ]; then
                 warn "Ubuntu ships Chromium only as a snap, which services can't use reliably;"
@@ -303,26 +329,26 @@ case "$PKG" in
         # shellcheck disable=SC2086
         apt-get install -y -qq --no-install-recommends $pkgs >/dev/null ;;
     dnf|yum)
-        pkgs="ca-certificates curl git gcc gcc-c++ make pkgconf-pkg-config gzip util-linux shadow-utils"
+        pkgs="ca-certificates curl gzip util-linux shadow-utils $(with_build "git gcc gcc-c++ make pkgconf-pkg-config")"
         [ "$RENDER" -eq 0 ] || pkgs="$pkgs chromium"
         [ "$CADDY" -eq 0 ] || pkgs="$pkgs caddy"
         # shellcheck disable=SC2086
         "$PKG" install -y -q $pkgs ;;
     pacman)
-        pkgs="ca-certificates curl git gcc make pkgconf gzip util-linux"
+        pkgs="ca-certificates curl gzip util-linux $(with_build "git gcc make pkgconf")"
         [ "$RENDER" -eq 0 ] || pkgs="$pkgs chromium"
         [ "$CADDY" -eq 0 ] || pkgs="$pkgs caddy"
         # shellcheck disable=SC2086
         # Arch only supports full upgrades; -Sy alone can break the system.
         pacman -Syu --noconfirm --needed $pkgs >/dev/null ;;
     zypper)
-        pkgs="ca-certificates curl git gcc gcc-c++ make pkg-config gzip util-linux shadow"
+        pkgs="ca-certificates curl gzip util-linux shadow $(with_build "git gcc gcc-c++ make pkg-config")"
         [ "$RENDER" -eq 0 ] || pkgs="$pkgs chromium"
         [ "$CADDY" -eq 0 ] || pkgs="$pkgs caddy"
         # shellcheck disable=SC2086
         zypper --non-interactive install --no-recommends $pkgs >/dev/null ;;
     apk)
-        pkgs="ca-certificates curl git build-base pkgconf gzip su-exec shadow"
+        pkgs="ca-certificates curl gzip su-exec shadow $(with_build "git build-base pkgconf")"
         [ "$RENDER" -eq 0 ] || pkgs="$pkgs chromium"
         [ "$CADDY" -eq 0 ] || pkgs="$pkgs caddy"
         # shellcheck disable=SC2086
@@ -330,106 +356,135 @@ case "$PKG" in
     skip)
         info "skipped (--no-packages)" ;;
     *)
-        warn "unknown package manager; make sure a C compiler, git and curl are installed" ;;
+        warn "unknown package manager; make sure curl and $(with_build "a C compiler and git") are installed" ;;
 esac
 [ "$PKG" = "skip" ] || info "done"
 
-# ---------------------------------------------------------------- toolchain
+# ------------------------------------------------------------------ binary
 
-version_ge() { # version_ge 1.94.1 1.85 -> true
-    [ "$(printf '%s\n%s\n' "$2" "$1" | sort -t. -k1,1n -k2,2n -k3,3n | head -n1)" = "$2" ]
-}
-
-rust_target() {
+if [ "$BINARY" -eq 1 ]; then
+    step "Downloading the release binary"
     case "$(uname -m)" in
-        x86_64|amd64) arch=x86_64 ;;
-        aarch64|arm64) arch=aarch64 ;;
-        *) die "no Rust toolchain for CPU $(uname -m)" ;;
+        x86_64|amd64) target=x86_64-unknown-linux-musl ;;
+        aarch64|arm64) target=aarch64-unknown-linux-musl ;;
+        *) die "no release binary for CPU $(uname -m); drop --binary to build from source" ;;
     esac
-    libc=gnu
-    if [ -f /etc/alpine-release ] || ldd --version 2>&1 | grep -qi musl; then libc=musl; fi
-    printf '%s-unknown-linux-%s' "$arch" "$libc"
-}
-
-step "Preparing the Rust toolchain"
-need_rust=$MIN_RUST
-[ "$NOTARY" -eq 0 ] || need_rust=$NOTARY_MIN_RUST
-CARGO=""
-if command -v cargo >/dev/null 2>&1; then
-    have=$(rustc --version 2>/dev/null | awk '{print $2}')
-    if [ -n "$have" ] && version_ge "$have" "$need_rust"; then
-        CARGO=$(command -v cargo)
-        info "using system Rust $have"
+    releases="${REPO_URL%.git}/releases"
+    tag=$REPO_REF
+    if [ -z "$tag" ]; then
+        # /releases/latest redirects to the newest stable release's tag.
+        tag=$(curl -fsSL -o /dev/null -w '%{url_effective}' "$releases/latest") \
+            || die "could not reach $releases"
+        tag=${tag##*/}
+        case "$tag" in v[0-9]*) ;; *) die "no release found at $releases" ;; esac
     fi
-fi
-if [ -z "$CARGO" ]; then
-    export RUSTUP_HOME="$OPT_DIR/rustup" CARGO_HOME="$OPT_DIR/cargo"
-    if [ -x "$CARGO_HOME/bin/rustup" ]; then
-        "$CARGO_HOME/bin/rustup" update stable --no-self-update >/dev/null 2>&1 || true
-    else
-        target=$(rust_target)
-        info "installing Rust ($target) into $OPT_DIR (not on anyone's PATH)"
-        mkdir -p "$OPT_DIR"
-        tmp=$(mktemp -d)
-        base="https://static.rust-lang.org/rustup/dist/$target"
-        curl --proto '=https' --tlsv1.2 -fsSL -o "$tmp/rustup-init" "$base/rustup-init"
-        want=$(curl --proto '=https' --tlsv1.2 -fsSL "$base/rustup-init.sha256" | awk '{print $1}')
-        got=$(sha256sum "$tmp/rustup-init" | awk '{print $1}')
-        if [ -z "$want" ] || [ "$want" != "$got" ]; then die "rustup-init checksum mismatch"; fi
-        chmod +x "$tmp/rustup-init"
-        "$tmp/rustup-init" -y -q --profile minimal --default-toolchain stable --no-modify-path >/dev/null
-        rm -rf "$tmp"
-    fi
-    CARGO="$CARGO_HOME/bin/cargo"
-    have=$("$CARGO_HOME/bin/rustc" --version | awk '{print $2}')
-    version_ge "$have" "$need_rust" || die "Rust $have is older than the required $need_rust"
-    info "using Rust $have"
-fi
-
-# ------------------------------------------------------------------ source
-
-step "Getting the source"
-if [ -z "$SOURCE" ]; then
-    here=""
-    if cd "$(dirname "$0")" 2>/dev/null; then here=$(pwd); cd - >/dev/null; fi
-    if [ -n "$here" ] && [ -f "$here/../crates/keepword/Cargo.toml" ]; then
-        SOURCE=$(cd "$here/.." && pwd)
-    fi
-fi
-if [ -n "$SOURCE" ]; then
-    [ -f "$SOURCE/crates/keepword/Cargo.toml" ] || die "$SOURCE is not a Keepword checkout"
-    SOURCE=$(cd "$SOURCE" && pwd)
-    info "building from $SOURCE"
+    name="keepword-$tag-$target"
+    tmp=$(mktemp -d)
+    curl -fsSL --retry 3 -o "$tmp/$name.tar.gz" "$releases/download/$tag/$name.tar.gz" \
+        || die "could not download $name.tar.gz from $releases/tag/$tag"
+    want=$(curl -fsSL --retry 3 "$releases/download/$tag/SHA256SUMS" | awk -v f="$name.tar.gz" '$2 == f {print $1}')
+    got=$(sha256sum "$tmp/$name.tar.gz" | awk '{print $1}')
+    if [ -z "$want" ] || [ "$want" != "$got" ]; then die "$name.tar.gz checksum mismatch"; fi
+    tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
+    install -d "$BIN"
+    install -m 0755 "$tmp/$name/keepword" "$BIN/keepword.new"
+    mv -f "$BIN/keepword.new" "$BIN/keepword"
+    rm -rf "$tmp"
+    info "installed $BIN/keepword ($("$BIN/keepword" --version), release $tag)"
 else
-    SOURCE="$OPT_DIR/src"
-    if [ -d "$SOURCE/.git" ]; then
-        git -C "$SOURCE" fetch -q --depth 1 origin "$REPO_REF"
-        git -C "$SOURCE" checkout -q --force FETCH_HEAD
-    else
-        mkdir -p "$OPT_DIR"
-        git clone -q --depth 1 --branch "$REPO_REF" "$REPO_URL" "$SOURCE"
+    version_ge() { # version_ge 1.94.1 1.85 -> true
+        [ "$(printf '%s\n%s\n' "$2" "$1" | sort -t. -k1,1n -k2,2n -k3,3n | head -n1)" = "$2" ]
+    }
+
+    rust_target() {
+        case "$(uname -m)" in
+            x86_64|amd64) arch=x86_64 ;;
+            aarch64|arm64) arch=aarch64 ;;
+            *) die "no Rust toolchain for CPU $(uname -m)" ;;
+        esac
+        libc=gnu
+        if [ -f /etc/alpine-release ] || ldd --version 2>&1 | grep -qi musl; then libc=musl; fi
+        printf '%s-unknown-linux-%s' "$arch" "$libc"
+    }
+
+    step "Preparing the Rust toolchain"
+    need_rust=$MIN_RUST
+    [ "$NOTARY" -eq 0 ] || need_rust=$NOTARY_MIN_RUST
+    CARGO=""
+    if command -v cargo >/dev/null 2>&1; then
+        have=$(rustc --version 2>/dev/null | awk '{print $2}')
+        if [ -n "$have" ] && version_ge "$have" "$need_rust"; then
+            CARGO=$(command -v cargo)
+            info "using system Rust $have"
+        fi
     fi
-    info "$REPO_URL @ $REPO_REF ($(git -C "$SOURCE" rev-parse --short HEAD))"
-fi
+    if [ -z "$CARGO" ]; then
+        export RUSTUP_HOME="$OPT_DIR/rustup" CARGO_HOME="$OPT_DIR/cargo"
+        if [ -x "$CARGO_HOME/bin/rustup" ]; then
+            "$CARGO_HOME/bin/rustup" update stable --no-self-update >/dev/null 2>&1 || true
+        else
+            target=$(rust_target)
+            info "installing Rust ($target) into $OPT_DIR (not on anyone's PATH)"
+            mkdir -p "$OPT_DIR"
+            tmp=$(mktemp -d)
+            base="https://static.rust-lang.org/rustup/dist/$target"
+            curl --proto '=https' --tlsv1.2 -fsSL -o "$tmp/rustup-init" "$base/rustup-init"
+            want=$(curl --proto '=https' --tlsv1.2 -fsSL "$base/rustup-init.sha256" | awk '{print $1}')
+            got=$(sha256sum "$tmp/rustup-init" | awk '{print $1}')
+            if [ -z "$want" ] || [ "$want" != "$got" ]; then die "rustup-init checksum mismatch"; fi
+            chmod +x "$tmp/rustup-init"
+            "$tmp/rustup-init" -y -q --profile minimal --default-toolchain stable --no-modify-path >/dev/null
+            rm -rf "$tmp"
+        fi
+        CARGO="$CARGO_HOME/bin/cargo"
+        have=$("$CARGO_HOME/bin/rustc" --version | awk '{print $2}')
+        version_ge "$have" "$need_rust" || die "Rust $have is older than the required $need_rust"
+        info "using Rust $have"
+    fi
 
-# ------------------------------------------------------------------- build
+    step "Getting the source"
+    # Piped (curl | sh), $0 is the shell, not this script in a checkout.
+    if [ -z "$SOURCE" ] && [ -f "$0" ]; then
+        here=""
+        if cd "$(dirname "$0")" 2>/dev/null; then here=$(pwd); cd - >/dev/null; fi
+        if [ -n "$here" ] && [ -f "$here/../crates/keepword/Cargo.toml" ]; then
+            SOURCE=$(cd "$here/.." && pwd)
+        fi
+    fi
+    if [ -n "$SOURCE" ]; then
+        [ -f "$SOURCE/crates/keepword/Cargo.toml" ] || die "$SOURCE is not a Keepword checkout"
+        SOURCE=$(cd "$SOURCE" && pwd)
+        info "building from $SOURCE"
+    else
+        SOURCE="$OPT_DIR/src"
+        REPO_REF=${REPO_REF:-main}
+        if [ -d "$SOURCE/.git" ]; then
+            git -C "$SOURCE" fetch -q --depth 1 origin "$REPO_REF"
+            git -C "$SOURCE" checkout -q --force FETCH_HEAD
+        else
+            mkdir -p "$OPT_DIR"
+            git clone -q --depth 1 --branch "$REPO_REF" "$REPO_URL" "$SOURCE"
+        fi
+        info "$REPO_URL @ $REPO_REF ($(git -C "$SOURCE" rev-parse --short HEAD))"
+    fi
 
-step "Building (this takes a few minutes the first time)"
-export CARGO_TARGET_DIR="$OPT_DIR/target"
-mkdir -p "$CARGO_TARGET_DIR"
-features=""
-[ "$RENDER" -eq 0 ] || features="--features render"
-# shellcheck disable=SC2086
-(cd "$SOURCE" && "$CARGO" build --release --locked -q -p keepword $features)
-install -d "$BIN"
-install -m 0755 "$CARGO_TARGET_DIR/release/keepword" "$BIN/keepword.new"
-mv -f "$BIN/keepword.new" "$BIN/keepword"
-info "installed $BIN/keepword ($("$BIN/keepword" --version))"
-if [ "$NOTARY" -eq 1 ]; then
-    (cd "$SOURCE/crates/keepword-tlsn" && CARGO_TARGET_DIR="$OPT_DIR/target-tlsn" "$CARGO" build --release --locked -q)
-    install -m 0755 "$OPT_DIR/target-tlsn/release/keepword-tlsn" "$BIN/keepword-tlsn.new"
-    mv -f "$BIN/keepword-tlsn.new" "$BIN/keepword-tlsn"
-    info "installed $BIN/keepword-tlsn"
+    step "Building (this takes a few minutes the first time)"
+    export CARGO_TARGET_DIR="$OPT_DIR/target"
+    mkdir -p "$CARGO_TARGET_DIR"
+    features=""
+    [ "$RENDER" -eq 0 ] || features="--features render"
+    # shellcheck disable=SC2086
+    (cd "$SOURCE" && "$CARGO" build --release --locked -q -p keepword $features)
+    install -d "$BIN"
+    install -m 0755 "$CARGO_TARGET_DIR/release/keepword" "$BIN/keepword.new"
+    mv -f "$BIN/keepword.new" "$BIN/keepword"
+    info "installed $BIN/keepword ($("$BIN/keepword" --version))"
+    if [ "$NOTARY" -eq 1 ]; then
+        (cd "$SOURCE/crates/keepword-tlsn" && CARGO_TARGET_DIR="$OPT_DIR/target-tlsn" "$CARGO" build --release --locked -q)
+        install -m 0755 "$OPT_DIR/target-tlsn/release/keepword-tlsn" "$BIN/keepword-tlsn.new"
+        mv -f "$BIN/keepword-tlsn.new" "$BIN/keepword-tlsn"
+        info "installed $BIN/keepword-tlsn"
+    fi
 fi
 
 # -------------------------------------------------------------- user, data
@@ -765,7 +820,7 @@ EOF
 elif [ -n "$DOMAIN" ]; then
     step "Reverse proxy"
     info "point your proxy for https://$DOMAIN/v1/ at http://$API_ADDR, passing"
-    info "X-Forwarded-For (examples in docs/INSTALL.md), or re-run with --caddy"
+    info "X-Forwarded-For (examples in $DOCS/INSTALL.md), or re-run with --caddy"
 fi
 
 # ------------------------------------------------------------------- start
@@ -810,6 +865,8 @@ cat <<EOF
       keepword net status          (lists anything keeping this node out of the network)
       keepword watch add https://example.org/terms --every 6h
       keepword config show
-    Starting or joining a network: docs/NETWORK.md
+    Starting or joining a network: $DOCS/NETWORK.md
     ${DIM}(run keepword commands as root or with sudo; they switch to the $SVC_USER user by themselves)${RESET}
 EOF
+
+}

@@ -1,9 +1,30 @@
 name: Install
 
+# Only for changes to what the installer and the image build or run.
 on:
   pull_request:
+    paths:
+      - "scripts/**"
+      - "packaging/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "docs/keepword.example.toml"
+      - ".forgejo/workflows/install.yml"
   push:
     branches: [main]
+    paths:
+      - "scripts/**"
+      - "packaging/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "docs/keepword.example.toml"
+      - ".forgejo/workflows/install.yml"
 
 jobs:
   shellcheck:
@@ -77,6 +98,15 @@ jobs:
           - image: alpine:3.20
             prep: apk add --no-cache -q openrc curl procps git
             init: openrc
+          # The latest release's binary, with the installer piped to sh.
+          - image: debian:bookworm
+            prep: apt-get update -qq && apt-get install -y -qq systemd curl git ca-certificates >/dev/null
+            init: systemd
+            mode: binary
+          - image: alpine:3.20
+            prep: apk add --no-cache -q openrc curl procps git
+            init: openrc
+            mode: binary
     steps:
       - name: Prepare ${{ matrix.image }}
         run: ${{ matrix.prep }}
@@ -86,7 +116,7 @@ jobs:
           git -C /src fetch -q --depth 1 "${{ github.server_url }}/${{ github.repository }}.git" "${{ github.ref }}"
           git -C /src checkout -q FETCH_HEAD
       - name: Installer smoke test
-        run: sh /src/scripts/ci/installer-smoke.sh ${{ matrix.init }}
+        run: sh /src/scripts/ci/installer-smoke.sh ${{ matrix.init }} ${{ matrix.mode }}
 
   docker:
     runs-on: host

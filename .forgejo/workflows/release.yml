@@ -71,15 +71,16 @@ jobs:
 
           ### Install
 
-          On a server, the installer builds from source and sets up the service:
+          On a server, the installer sets up the service with the binary below:
 
           ```sh
-          git clone https://git.keepword.net/keepword/keepword.git && cd keepword
-          sudo sh scripts/install.sh --domain witness.example.org --caddy
+          curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
+              | sudo sh -s -- --binary --domain witness.example.org --caddy
           ```
 
-          The binaries below are static Linux builds of the `keepword` command
-          (without headless rendering). Check them against `SHA256SUMS`.
+          Drop `--binary` to build from source. The binaries below are static
+          Linux builds of the `keepword` command (without headless rendering).
+          Check them against `SHA256SUMS`.
           EOF
       - name: Publish
         env:

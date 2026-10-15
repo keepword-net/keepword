@@ -3,12 +3,22 @@
 # install, check the generated service files, run the node the way the
 # service would, query its API, then re-run the installer as an upgrade.
 # The node never dials the default seeds: it would join the real network.
-# Usage: installer-smoke.sh INIT   (systemd | openrc | none)
+# Usage: installer-smoke.sh INIT [MODE]   (systemd | openrc | none; source | binary)
+# MODE binary installs the latest release, piping the installer to sh the
+# way curl | sh does.
 set -eu
 init=$1
+mode=${2:-source}
 src=$(cd "$(dirname "$0")/../.." && pwd)
 
-sh "$src/scripts/install.sh" --source "$src" --yes --init "$init" \
+installer() {
+    case "$mode" in
+        source) sh "$src/scripts/install.sh" --source "$src" "$@" ;;
+        binary) sh -s -- --binary "$@" <"$src/scripts/install.sh" ;;
+    esac
+}
+
+installer --yes --init "$init" \
     --no-detect --no-asn-db --asn 64500 --country DE --peer https://peer.example.invalid --no-seeds
 
 keepword --version
@@ -42,11 +52,11 @@ test "$(stat -c %U /var/lib/keepword/index.sqlite)" = keepword
 
 key() { keepword id | awk '/witness key/ {print $3}'; }
 before=$(key)
-sh "$src/scripts/install.sh" --source "$src" --yes --init "$init" --no-detect --no-asn-db --retain normalized
+installer --yes --init "$init" --no-detect --no-asn-db --retain normalized
 test "$before" = "$(key)"
 test "$(keepword config get content.retain)" = normalized
 test "$(keepword config get network.seeds)" = false
 
 sh "$src/scripts/install.sh" --uninstall --purge --yes --init "$init"
 if id keepword >/dev/null 2>&1; then echo "the keepword user still exists" >&2; exit 1; fi
-echo "installer smoke test passed ($init)"
+echo "installer smoke test passed ($init, $mode)"
