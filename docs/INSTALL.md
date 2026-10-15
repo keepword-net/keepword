@@ -53,7 +53,7 @@ sudo sh scripts/install.sh --domain witness.example.org
 sudo sh scripts/install.sh --public-api 0.0.0.0:8481 --endpoint https://witness.example.org:8481
 
 # A private watchdog: no network, hashes and diffs only
-sudo sh scripts/install.sh --retain normalized --no-asn-db
+sudo sh scripts/install.sh --no-asn-db
 
 # Everything: headless rendering and a TLSNotary notary on :8482
 sudo sh scripts/install.sh --domain witness.example.org --caddy --render --notary
@@ -210,7 +210,7 @@ Or `docker compose -f packaging/docker/compose.yaml up -d`. Settings:
 | Variable | Meaning |
 |---|---|
 | `KEEPWORD_ASN`, `KEEPWORD_COUNTRY` | where the node is (first start) |
-| `KEEPWORD_RETAIN` | `full`, `normalized` or `none` (first start) |
+| `KEEPWORD_RETAIN` | `full`, `normalized` (default) or `none` (first start) |
 | `KEEPWORD_ENDPOINT` | public URL of the peer API |
 | `KEEPWORD_PEERS` | comma-separated bootstrap peers |
 | `KEEPWORD_SEEDS=0` | don't join through the default seeds (a separate network, or a test) |

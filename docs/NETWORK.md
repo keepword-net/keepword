@@ -195,7 +195,7 @@ and `keepword net status` warns about them: `quorum.trust_self_reported`,
 | `network.max_request_watches` | Most URLs your witness captures for the network at once (default 200). |
 | `network.render_requests` | Render requests in Chromium. Off by default: the browser fetches sub-resources past the node's address checks, so only enable it with the browser sandboxed away from your LAN. |
 | `network.serve_content_hosts` | Hosts whose captured content your API serves to anyone. Empty by default: peers get hashes and signatures, never page content. |
-| `content.retain` | `full`, `normalized` or `none`. See DESIGN.md §7 before storing third-party content. |
+| `content.retain` | `full`, `normalized` (default) or `none`. See DESIGN.md §7 before storing third-party content. |
 | `quorum.max_rechecks_per_hour` | Most recheck captures your witness makes for the network in an hour (default 30). |
 | `network.client_ip_header` | Behind a CDN: the header your reverse proxy puts the client address in, e.g. `X-Real-IP`. Without it, the node places every peer in the CDN's network (INSTALL.md). |
 | `network.api_requests_per_minute` | Requests per minute the public API answers from one address, in bursts of as many (default 600, 0 = off). Behind a reverse proxy it needs `network.trust_forwarded_for` to see real addresses; without it, private and local addresses aren't limited. |

@@ -13,6 +13,14 @@ only change incompatibly in a new major version.
   store, so whoever was sent two bundles can see what changed. Both must
   verify and carry their normalized text.
 
+### Changed
+
+- **New nodes keep normalized text, not raw bodies, by default.**
+  `content.retain`, `keepword init --retain`, the installer and the Docker
+  image now default to `normalized`: diffs work as before, with no raw
+  copy of third-party pages on disk. Pass `full` to keep raw bodies too.
+  Existing nodes keep their setting.
+
 ### Fixed
 
 - **A change of status was classified as an edit.** A blip of errors had

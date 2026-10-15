@@ -68,7 +68,7 @@ Network:
   --no-asn-db           Skip the IP-to-ASN table (verdicts need it)
 
 Features:
-  --retain MODE         full | normalized | none (default: full)
+  --retain MODE         full | normalized | none (default: normalized)
   --render              Build headless-browser capture and install Chromium
   --notary              Build the TLSNotary tier and run a notary on :8482
 
@@ -475,7 +475,7 @@ EOF
 chmod 0755 "$LIBEXEC/update-asn-db"
 
 if [ "$UPGRADE" -eq 0 ]; then
-    set -- --retain "${RETAIN:-full}"
+    set -- --retain "${RETAIN:-normalized}"
     [ -z "$ASN" ] || set -- "$@" --asn "$ASN"
     [ -z "$COUNTRY" ] || set -- "$@" --country "$COUNTRY"
     keepword init "$@" | sed 's/^/    /'
