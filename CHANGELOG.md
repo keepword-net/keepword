@@ -7,6 +7,9 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+### Changed
+- **New default seed**, a new default seed has been hosted at ```seed2.keepword.net```, added it to default seeds.
+
 ## [2.2.0] - 2026-10-15
 
 A one-line install from the release binary, diffs between two bundle files,
