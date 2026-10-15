@@ -7,6 +7,13 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-15
+
+A one-line install from the release binary, diffs between two bundle files,
+normalized retention by default for new nodes, and status changes no longer
+counted as edits. Formats, the normalizer and the protocol are unchanged:
+2.1.0 and 2.2.0 witnesses federate and compare captures as before.
+
 ### Added
 
 - **`keepword diff --bundle A B`** diffs two bundle files with no node or
@@ -461,6 +468,7 @@ produce evidence anyone can verify offline.
 - A private web UI with history, diffs, verdicts, alerts and the network.
 - Licensed under the GNU AGPL v3.
 
+[2.2.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.2.0
 [2.1.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.1.0
 [2.0.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.0.0
 [1.2.0]: https://git.keepword.net/keepword/keepword/releases/tag/v1.2.0
