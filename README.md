@@ -208,15 +208,24 @@ The design, threat model and formats are in [docs/DESIGN.md](docs/DESIGN.md).
 On a server (Debian, Ubuntu, Fedora, RHEL-likes, Arch, openSUSE, Alpine):
 
 ```sh
+curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
+    | sudo sh -s -- --binary --domain witness.example.org --caddy
+```
+
+This installs the latest release's static binary, creates a sandboxed
+`keepword` service with its own user, fetches the IP-to-ASN table and
+refreshes it weekly, detects the node's network, and puts the peer API behind
+Caddy with automatic TLS. Re-run it to upgrade. To build from source instead
+(needed for `--render` and `--notary`), drop `--binary`, or run the installer
+from a checkout:
+
+```sh
 git clone https://git.keepword.net/keepword/keepword.git && cd keepword
 sudo sh scripts/install.sh --domain witness.example.org --caddy
 ```
 
-This builds Keepword, creates a sandboxed `keepword` service with its own user,
-fetches the IP-to-ASN table and refreshes it weekly, detects the node's
-network, and puts the peer API behind Caddy with automatic TLS. Re-run it to
-upgrade. Prebuilt static Linux binaries of the `keepword` command (x86_64 and
-arm64) are attached to each [release](https://git.keepword.net/keepword/keepword/releases);
+The static Linux binaries of the `keepword` command (x86_64 and arm64) are
+attached to each [release](https://git.keepword.net/keepword/keepword/releases);
 changes are listed in [CHANGELOG.md](CHANGELOG.md). There is also a
 container image (`Dockerfile`,
 `packaging/docker/compose.yaml`). Both are described in

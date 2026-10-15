@@ -12,6 +12,11 @@ only change incompatibly in a new major version.
 - **`keepword diff --bundle A B`** diffs two bundle files with no node or
   store, so whoever was sent two bundles can see what changed. Both must
   verify and carry their normalized text.
+- **`install.sh --binary`** installs the latest release's static binary
+  instead of building, so small machines need no compiler or Rust, and the
+  installer runs piped: `curl -fsSL …/scripts/install.sh | sudo sh -s --
+  --binary`. A truncated download runs nothing, and the confirmation is
+  asked on the terminal.
 
 ### Fixed
 

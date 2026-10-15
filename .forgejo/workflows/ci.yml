@@ -1,8 +1,23 @@
 name: CI
 
+# Only for changes to the Rust code (config.rs includes the example config),
+# and once per change: on pull requests and main, not every branch push.
 on:
   push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "docs/keepword.example.toml"
+      - ".forgejo/workflows/ci.yml"
   pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "docs/keepword.example.toml"
+      - ".forgejo/workflows/ci.yml"
 
 env:
   CARGO_TERM_COLOR: always
