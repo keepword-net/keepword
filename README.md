@@ -140,7 +140,8 @@ Every check says exactly what it proves, and what it doesn't.
 - 🔍 **Watch a page that matters to you.** Install a node and ask the
   network to keep an eye on it.
 - 🛠️ **Build with us.** Everything is in Rust, tested end to end, and
-  documented at [keepword.net/docs](https://keepword.net/docs/).
+  documented at [keepword.net/docs](https://keepword.net/docs/). Start with
+  [CONTRIBUTING.md](https://git.keepword.net/keepword/keepword/src/branch/main/CONTRIBUTING.md).
 
 <details>
 <summary><b>Questions people ask</b></summary>
