@@ -18,7 +18,8 @@
 <p align="center">
   <a href="https://keepword.net/network/"><b>Run a witness</b></a> ·
   <a href="https://keepword.net/install/">Install</a> ·
-  <a href="https://git.keepword.net/keepword/keepword/src/branch/main/docs/DESIGN.md">How it works</a>
+  <a href="https://keepword.net/docs/design/">How it works</a> ·
+  <a href="https://keepword.net/docs/">Docs</a>
 </p>
 
 ---
@@ -134,12 +135,12 @@ Every check says exactly what it proves, and what it doesn't.
 - ⭐ **Star the repo** to follow along.
 - 🖥️ **Run a witness.** The network gets stronger with every witness in a
   new country or network. A small server and one command is all it takes:
-  [keepword.net/network](https://keepword.net/network/) (or the full guide in
-  [docs/NETWORK.md](docs/NETWORK.md)).
+  [keepword.net/network](https://keepword.net/network/) (or the full guide,
+  [Starting a network](https://keepword.net/docs/network/)).
 - 🔍 **Watch a page that matters to you.** Install a node and ask the
   network to keep an eye on it.
 - 🛠️ **Build with us.** Everything is in Rust, tested end to end, and
-  documented in [docs/DESIGN.md](docs/DESIGN.md).
+  documented at [keepword.net/docs](https://keepword.net/docs/).
 
 <details>
 <summary><b>Questions people ask</b></summary>
@@ -174,7 +175,7 @@ for exactly that.
 **Is it legal?**
 Witnesses fetch public pages, like a browser does. Operators choose what
 their witness keeps and shares; by default it shares only fingerprints
-(hashes), never page content. See [DESIGN.md §7](docs/DESIGN.md#7-storage-retention-and-law)
+(hashes), never page content. See [the design, §7](https://keepword.net/docs/design/#7-storage-retention-and-law)
 for the details, and check your local law before running a public witness.
 
 </details>
@@ -201,7 +202,8 @@ Captures carry a drand beacon, which proves they happened *after* a point
 in time. Logs are anchored in Bitcoin through OpenTimestamps, which proves
 the captures existed *before* a later point.
 
-The design, threat model and formats are in [docs/DESIGN.md](docs/DESIGN.md).
+The design, threat model and formats are in
+[Design and threat model](https://keepword.net/docs/design/).
 
 ## Install
 
@@ -226,11 +228,12 @@ sudo sh scripts/install.sh --domain witness.example.org --caddy
 
 The static Linux binaries of the `keepword` command (x86_64 and arm64) are
 attached to each [release](https://git.keepword.net/keepword/keepword/releases);
-changes are listed in [CHANGELOG.md](CHANGELOG.md). There is also a
-container image (`Dockerfile`,
-`packaging/docker/compose.yaml`). Both are described in
-[docs/INSTALL.md](docs/INSTALL.md). To start a network or join one, see
-[docs/NETWORK.md](docs/NETWORK.md).
+changes are listed in the
+[changelog](https://keepword.net/docs/changelog/). There is also a
+container image (`Dockerfile`, `packaging/docker/compose.yaml`). Both are
+described in [Installing a node](https://keepword.net/docs/install/). To
+start a network or join one, see
+[Starting a network](https://keepword.net/docs/network/).
 
 ## Quick start (from source)
 
@@ -244,177 +247,27 @@ keepword watch add https://example.org/privacy --every 6h
 keepword serve --watch                        # web UI on http://127.0.0.1:8480
 ```
 
-When the page changes:
+What a change looks like, proving it to someone else, and every command are
+in [Using Keepword](https://keepword.net/docs/usage/).
 
-```
-$ keepword capture https://example.org/privacy
-attestation 7c1e…
-  ...
-CHANGED since 3f2a90c1b7d4: silent edit: +1 -1 lines
+## Documentation
 
---- before
-+++ after
-@@ -3,4 +3,4 @@
- h1: Privacy policy
--p: We never sell your data.
-+p: We may share your data with partners.
-```
+Everything else is at **[keepword.net/docs](https://keepword.net/docs/)**,
+and in [`docs/`](docs/):
 
-Proving it to someone else:
-
-```sh
-keepword export https://example.org/privacy --at 2026-05-01 -o evidence.json
-# they run, with no node and no network:
-keepword verify --bundle evidence.json
-```
-
-```
-  [ok  ] signature      signed by witness 7b757b5c…
-  [ok  ] tree head      size 1204 root 3fc10f581373
-  [ok  ] log inclusion  leaf 1187 of 1204
-  [ok  ] headers        467 bytes, hash 13d3817dd54e
-  [ok  ] body           41233 bytes, hash 4b768329a126
-  [ok  ] normalized     matches 61a162ac8062
-  [ok  ] renormalize    body normalizes to the attested norm hash
-
-VERIFIED
-```
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `init [--asn N] [--country CC] [--retain full\|normalized\|none]` | Create key, config and empty log |
-| `id` | Show witness key and log head |
-| `capture URL [--render]` | Fetch now, attest, log, compare with the previous capture |
-| `verify URL\|ID [--at TIME]` / `verify --bundle FILE` | Run every check on a stored capture or a bundle |
-| `export URL\|ID [--at TIME] [--no-content] [-o FILE]` | Write an evidence bundle |
-| `warc URL\|ID -o FILE` | Rebuild a WARC 1.1 file for a capture |
-| `history URL` | All captures and detected changes |
-| `diff URL` / `diff ID ID` / `diff --bundle FILE FILE` | Diff the last two versions, two captures, or two bundles (no node needed) |
-| `watch add\|rm\|list\|run [--once]` | Manage and run the watchlist |
-| `log head\|consistency OLD [NEW]\|audit` | Tree head, consistency proofs, full self-audit |
-| `purge URL [--forget]` | Erase stored content (and records); the log stays valid |
-| `serve [--addr A] [--api-addr B] [--watch] [--anchor]` | Web UI (private), peer API (public), scheduler, federation and anchoring loops |
-| `net add-peer URL\|remove-peer KEY\|peers\|sync\|status\|lookup IP` | Federation with other witnesses; `status` warns about misconfiguration |
-| `request URL [--every 1h] [--for 7days]` / `request URL --cancel` | Ask the network to watch a URL (asking again replaces the request), or withdraw it |
-| `requests [--mine]` | Active network watch requests |
-| `verdict URL` | What independent witnesses agree the URL served |
-| `alerts` | Split, silent-edit and equivocation alerts |
-| `anchor submit\|upgrade\|list\|export` | Bitcoin anchoring via OpenTimestamps |
-| `beacon [ROUND]` | Fetch and verify a drand beacon |
-| `config show\|get\|set\|unset` | Read or change `keepword.toml`, with validation |
-
-`--at` takes RFC 3339 or `YYYY-MM-DD` (end of that day, UTC). IDs can be
-abbreviated. `--json` gives machine-readable output.
-
-The node's data directory is `--dir` or `KEEPWORD_DIR` if given, else
-`./keepword-data` if it exists, else the node the installer set up
-(`/var/lib/keepword`). Run as root, `keepword` switches to the owner of that
-directory, the service user, before doing anything, so `sudo keepword …`
-just works on an installed node.
-
-## Configuration
-
-`keepword-data/keepword.toml`; see [docs/keepword.example.toml](docs/keepword.example.toml).
-The important settings:
-
-- `content.retain`: what to keep. `normalized` (the default: diffs without
-  raw bytes), `full` (raw bytes too) or `none` (hashes only). Attestations
-  and the log never contain page content.
-- `[[rules]]`: per-site normalization (extra elements to drop, content
-  root). Rules are part of the normalizer profile each attestation commits
-  to.
-- `capture.use_system_proxy`: off by default. A proxy changes your vantage
-  point, and a TLS-intercepting one hides the server's certificate.
-
-## Running in a network
-
-```sh
-keepword init --asn 3320 --country DE
-# in keepword-data/keepword.toml:
-#   [network]  endpoint = "https://witness.example.org"   peers = ["https://other.example"]
-#   [quorum]   asn_db = "/var/lib/keepword/ip2asn-combined.tsv"   (from iptoasn.com)
-keepword serve --api-addr 0.0.0.0:8481 --watch --anchor
-```
-
-Put the API (`/v1/...`) behind TLS on your public endpoint. Keep the web UI
-(`--addr`, default `127.0.0.1:8480`) private, because it shows page content.
-Peers corroborate each other's location from the addresses they see pushes
-come from. Verdicts only count witnesses whose ASN is corroborated this
-way, so every node needs an IP-to-ASN table.
-
-## TLSNotary proof tier
-
-For high-value pages, a second witness can notarize the TLS session itself
-(MPC-TLS via [TLSNotary](https://tlsnotary.org)). Then even the capturing
-witness couldn't have made the content up on its own:
-
-```sh
-cd crates/keepword-tlsn          # separate workspace, Rust 1.95+
-cargo build --release
-keepword-tlsn serve --addr 0.0.0.0:8482                    # on the notary
-keepword-tlsn capture https://example.org/terms --verifier notary.example.net:8482 --verifier-key <hex>
-```
-
-Bundles then carry the notary's receipt and the transcript, and
-`keepword verify` checks both.
-
-## Headless rendering
-
-For pages that only exist after JavaScript runs:
-
-```sh
-cargo build --release --features render
-keepword capture --render https://example.org/app
-```
-
-This needs Chrome or Chromium; set `capture.chrome` if it isn't on `PATH`.
-The browser resolves hosts itself, so the private-address guard only covers
-the page's own address, not its sub-resources. Only render URLs you chose;
-network requests are rendered only with `network.render_requests`.
-
-## Layout
-
-```
-crates/keepword-core       protocol: encoding, attestations, Merkle log, bundles, assignment, quorum
-crates/keepword-normalize  canonicalizer, site rules, diff and silent-edit classifier
-crates/keepword-capture    HTTP capture, SSRF guard, headless render, WARC export
-crates/keepword-store      blob store, SQLite index, log, watchlist
-crates/keepword            the `keepword` binary: CLI, peer API, federation, web UI
-crates/keepword-tlsn       TLSNotary proof tier (separate workspace)
-docs/DESIGN.md             threat model, formats, network design, roadmap
-docs/INSTALL.md            production installation (installer, container)
-docs/NETWORK.md            starting or joining a public Keepword network
-scripts/install.sh         the installer
-packaging/docker/          container entrypoint and compose file
-```
-
-## Development
-
-```sh
-cargo test --workspace
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo fmt --all --check
-```
-
-Integration tests run everything over real HTTP on localhost:
-
-- `e2e.rs`: the single-node lifecycle (capture, noise, silent and disclosed
-  edits, bundles, tampering, redirects, audit, erasure)
-- `network.rs`: four witnesses in four ASNs (discovery, log audits,
-  cosigning, observation receipts, assigned watch requests, replacing and
-  withdrawing them, dropping gossip from strangers, a disagreement nobody
-  can recheck staying disputed, equivocation and forks of different
-  sizes), a six-node network with one-peer gossip samples and two auditors
-  per log, and a twelve-node network in two countries where rechecks
-  overrule a lone dissenter and confirm, then alert on, a real regional
-  difference
-- `anchoring.rs`: drand beacons and Bitcoin anchoring against mock drand,
-  OpenTimestamps and Esplora services
-- `keepword-normalize/tests/corpus.rs`: the normalizer regression corpus
-- `keepword-tlsn/tests/notary.rs`: a full MPC-TLS notarization between two
-  witnesses against TLSNotary's test server
+- [Installing a node](https://keepword.net/docs/install/): the installer, the
+  container, reverse proxies, CDNs and firewalls
+- [Using Keepword](https://keepword.net/docs/usage/): every command, the data
+  directory, the main settings, headless rendering and TLSNotary
+- [Starting a network](https://keepword.net/docs/network/): the founding
+  witnesses and the settings they share
+- [Configuration](https://keepword.net/docs/configuration/): every setting,
+  with comments
+- [Design and threat model](https://keepword.net/docs/design/): the formats,
+  the network and the roadmap
+- [Development](https://keepword.net/docs/development/): the code's layout,
+  the checks and the tests
+- [Changelog](https://keepword.net/docs/changelog/)
 
 ## License
 
