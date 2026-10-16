@@ -1,8 +1,8 @@
 # Developing Keepword
 
 Everything is in Rust. Bug reports, ideas and changes go to the main
-repository on [git.keepword.net](https://git.keepword.net/keepword/keepword).
-The design, threat model and formats are in [DESIGN.md](DESIGN.md).
+repository on [git.keepword.net](https://git.keepword.net/keepword/keepword);
+[CONTRIBUTING.md](../CONTRIBUTING.md) says how to send them. The design, threat model and formats are in [DESIGN.md](DESIGN.md).
 
 ## Layout
 

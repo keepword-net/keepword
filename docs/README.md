@@ -11,4 +11,5 @@ These are also at [keepword.net/docs](https://keepword.net/docs/).
 | [DESIGN.md](DESIGN.md) | The threat model, formats, network design and roadmap |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | The code's layout, the checks and the tests |
 
-What changed in each release is in [CHANGELOG.md](../CHANGELOG.md).
+What changed in each release is in [CHANGELOG.md](../CHANGELOG.md), and
+how to contribute is in [CONTRIBUTING.md](../CONTRIBUTING.md).
