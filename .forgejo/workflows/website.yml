@@ -1,0 +1,40 @@
+name: Website
+
+# keepword.net builds its docs pages from docs/ and CHANGELOG.md on main.
+# When they change, deploy the site again: CI logs in to the website's
+# container and runs its deploy script, which fetches them. The key can do
+# nothing else; see the keepword-website repository's README.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "CHANGELOG.md"
+      - ".forgejo/workflows/website.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy keepword.net over SSH
+        env:
+          HOST: ${{ secrets.WEBSITE_DEPLOY_HOST }}
+          PORT: ${{ secrets.WEBSITE_DEPLOY_PORT }}
+          SSH_KEY: ${{ secrets.WEBSITE_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.WEBSITE_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          : "${HOST:?set the WEBSITE_DEPLOY_HOST secret}"
+          : "${SSH_KEY:?set the WEBSITE_DEPLOY_SSH_KEY secret}"
+          : "${KNOWN_HOSTS:?set the WEBSITE_DEPLOY_KNOWN_HOSTS secret}"
+          if ! command -v ssh >/dev/null; then
+            apt-get update && apt-get install -y --no-install-recommends openssh-client
+          fi
+          dir=$(mktemp -d)
+          trap 'rm -rf "$dir"' EXIT
+          (umask 077 && printf '%s\n' "$SSH_KEY" >"$dir/key")
+          printf '%s\n' "$KNOWN_HOSTS" >"$dir/known_hosts"
+          ssh -i "$dir/key" -p "${PORT:-22}" \
+            -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$dir/known_hosts" \
+            "root@$HOST" sh /opt/keepword-website/src/deploy/deploy.sh </dev/null
