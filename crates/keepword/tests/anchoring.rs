@@ -195,22 +195,40 @@ async fn beacon_and_bitcoin_anchor() {
     assert!(anchor.detail.contains("block 800000"), "{}", anchor.detail);
     let http = keepword::httpc::Http::new(true, false).unwrap();
     keepword::anchor::verify_anchor_online(&http, &base, &b, &mut r).await;
-    let btc = r.checks.iter().find(|c| c.name == "bitcoin").unwrap();
-    assert_eq!(btc.status, Status::Pass, "{}", btc.detail);
+    // The chain settles the anchor check itself, and the summary says so.
+    let anchors: Vec<_> = r.checks.iter().filter(|c| c.name == "anchor").collect();
+    assert_eq!(anchors.len(), 1);
+    assert_eq!(anchors[0].status, Status::Pass, "{}", anchors[0].detail);
+    let summary = r.summary();
+    assert!(
+        summary
+            .shows
+            .iter()
+            .any(|s| s.contains("Bitcoin block 800000")),
+        "{summary:?}"
+    );
+    assert!(
+        !summary.does_not_show.iter().any(|s| s.contains("Bitcoin")),
+        "{summary:?}"
+    );
     assert!(r.ok());
 
     // A chain that disagrees fails the check.
     m.wrong_root.store(true, Ordering::SeqCst);
     let mut r = Node::verify_bundle(&b);
     keepword::anchor::verify_anchor_online(&http, &base, &b, &mut r).await;
-    assert_eq!(
-        r.checks
-            .iter()
-            .find(|c| c.name == "bitcoin")
-            .unwrap()
-            .status,
-        Status::Fail
-    );
+    let anchor = r.checks.iter().find(|c| c.name == "anchor").unwrap();
+    assert_eq!(anchor.status, Status::Fail);
+    m.wrong_root.store(false, Ordering::SeqCst);
+
+    // An anchor that fails offline stays failed, whatever the chain says.
+    let mut bad = b.clone();
+    bad.anchor.as_mut().unwrap().leaf_index += 1;
+    let mut r = Node::verify_bundle(&bad);
+    keepword::anchor::verify_anchor_online(&http, &base, &bad, &mut r).await;
+    let anchor = r.checks.iter().find(|c| c.name == "anchor").unwrap();
+    assert_eq!(anchor.status, Status::Fail, "{}", anchor.detail);
+    assert!(!r.ok());
 
     // The stored proof is a standard detached .ots for the tree-head bytes.
     let d = ots::DetachedTimestamp::from_bytes(&rows[0].ots).unwrap();
