@@ -18,7 +18,8 @@ only change incompatibly in a new major version.
   chain now settles the `anchor` check itself: it passes with the block
   the tree head existed by, or fails if no claimed block has the
   committed Merkle root. In `--json` output the `bitcoin` check is gone.
-  A block that two calendars confirmed in is listed once.
+  A block that two calendars confirmed in is listed and checked once,
+  earliest block first, by `verify` and by `anchor upgrade`.
 
 ## [2.2.0] - 2026-10-15
 

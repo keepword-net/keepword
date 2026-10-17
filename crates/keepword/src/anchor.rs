@@ -117,16 +117,11 @@ impl Node {
             }
             // Keep the completed proof even while the explorer is down.
             if let Some(esplora) = self.config.anchor.esplora() {
-                for claim in d.timestamp.claims() {
-                    let (Attestation::Bitcoin { height }, Some(root)) =
-                        (&claim.attestation, claim.bitcoin_merkle_root_hex())
-                    else {
-                        continue;
-                    };
-                    match check_block(&self.net, esplora, *height, &root).await {
+                for (height, root) in ots::bitcoin_blocks(&d.timestamp.claims()) {
+                    match check_block(&self.net, esplora, height, &root).await {
                         Ok(true) => {
                             row.status = "confirmed".into();
-                            row.height = Some(*height);
+                            row.height = Some(height);
                             rep.confirmed += 1;
                             break;
                         }
