@@ -152,6 +152,22 @@ impl Claim {
     }
 }
 
+/// The Bitcoin blocks claims commit to, as (height, Merkle root in explorer
+/// byte order), earliest first and each once: calendars whose transactions
+/// confirmed in the same block make the same claim.
+pub fn bitcoin_blocks(claims: &[Claim]) -> Vec<(u64, String)> {
+    let mut blocks: Vec<_> = claims
+        .iter()
+        .filter_map(|c| match c.attestation {
+            Attestation::Bitcoin { height } => Some((height, c.bitcoin_merkle_root_hex()?)),
+            _ => None,
+        })
+        .collect();
+    blocks.sort();
+    blocks.dedup();
+    blocks
+}
+
 impl Timestamp {
     pub fn new(msg: Vec<u8>) -> Self {
         Timestamp {
@@ -523,6 +539,30 @@ mod tests {
                 .rev()
                 .collect::<Vec<_>>(),
             root
+        );
+    }
+
+    #[test]
+    fn same_block_from_two_calendars_counts_once() {
+        let bitcoin = |height, msg: [u8; 32]| Claim {
+            msg: msg.to_vec(),
+            attestation: Attestation::Bitcoin { height },
+        };
+        let pending = Claim {
+            msg: vec![0x33; 32],
+            attestation: Attestation::Pending {
+                uri: "https://a.example".into(),
+            },
+        };
+        let blocks = bitcoin_blocks(&[
+            bitcoin(971_724, [0x44; 32]),
+            pending,
+            bitcoin(971_723, [0x22; 32]),
+            bitcoin(971_723, [0x22; 32]),
+        ]);
+        assert_eq!(
+            blocks.iter().map(|b| b.0).collect::<Vec<_>>(),
+            [971_723, 971_724]
         );
     }
 

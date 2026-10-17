@@ -117,16 +117,11 @@ impl Node {
             }
             // Keep the completed proof even while the explorer is down.
             if let Some(esplora) = self.config.anchor.esplora() {
-                for claim in d.timestamp.claims() {
-                    let (Attestation::Bitcoin { height }, Some(root)) =
-                        (&claim.attestation, claim.bitcoin_merkle_root_hex())
-                    else {
-                        continue;
-                    };
-                    match check_block(&self.net, esplora, *height, &root).await {
+                for (height, root) in ots::bitcoin_blocks(&d.timestamp.claims()) {
+                    match check_block(&self.net, esplora, height, &root).await {
                         Ok(true) => {
                             row.status = "confirmed".into();
-                            row.height = Some(*height);
+                            row.height = Some(height);
                             rep.confirmed += 1;
                             break;
                         }
@@ -199,26 +194,30 @@ pub async fn check_block(
     Ok(block.merkle_root.eq_ignore_ascii_case(merkle_root_hex))
 }
 
-/// Check a bundle's Bitcoin anchor against a block explorer and add the
-/// result to the report.
+/// Check a bundle's Bitcoin anchor against a block explorer. Offline, the
+/// `anchor` check can only go as far as the proof; what the chain says
+/// settles it.
 pub async fn verify_anchor_online(http: &Http, esplora: &str, b: &Bundle, report: &mut Report) {
     let Some(anchor) = &b.anchor else { return };
-    let Ok(claims) = anchor.claims() else { return };
-    let btc: Vec<(u64, String)> = claims
+    // Only an anchor whose offline checks held is left to the chain.
+    let Some(offline) = report
+        .checks
         .iter()
-        .filter_map(|c| match c.attestation {
-            Attestation::Bitcoin { height } => Some((height, c.bitcoin_merkle_root_hex()?)),
-            _ => None,
-        })
-        .collect();
+        .find(|c| c.name == "anchor" && c.status == Status::Skip)
+    else {
+        return;
+    };
+    let offline = offline.detail.clone();
+    let Ok(claims) = anchor.claims() else { return };
+    let btc = ots::bitcoin_blocks(&claims);
     if btc.is_empty() {
         return;
     }
     for (height, root) in &btc {
         match check_block(http, esplora, *height, root).await {
             Ok(true) => {
-                report.push(
-                    "bitcoin",
+                report.set(
+                    "anchor",
                     Status::Pass,
                     format!("tree head existed by Bitcoin block {height}"),
                 );
@@ -226,17 +225,17 @@ pub async fn verify_anchor_online(http: &Http, esplora: &str, b: &Bundle, report
             }
             Ok(false) => {}
             Err(e) => {
-                report.push(
-                    "bitcoin",
+                report.set(
+                    "anchor",
                     Status::Skip,
-                    format!("could not reach explorer: {e:#}"),
+                    format!("{offline}: could not reach explorer: {e:#}"),
                 );
                 return;
             }
         }
     }
-    report.push(
-        "bitcoin",
+    report.set(
+        "anchor",
         Status::Fail,
         "no claimed block has the committed Merkle root",
     );

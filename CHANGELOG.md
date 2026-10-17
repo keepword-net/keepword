@@ -10,6 +10,17 @@ only change incompatibly in a new major version.
 ### Changed
 - **New default seed**, a new default seed has been hosted at ```seed2.keepword.net```, added it to default seeds.
 
+### Fixed
+
+- **`keepword verify --esplora` left the anchor unchecked.** The chain's
+  answer went into a separate `bitcoin` line, while the `anchor` line
+  stayed skipped and the summary said there was no checked anchor. The
+  chain now settles the `anchor` check itself: it passes with the block
+  the tree head existed by, or fails if no claimed block has the
+  committed Merkle root. In `--json` output the `bitcoin` check is gone.
+  A block that two calendars confirmed in is listed and checked once,
+  earliest block first, by `verify` and by `anchor upgrade`.
+
 ## [2.2.0] - 2026-10-15
 
 A one-line install from the release binary, diffs between two bundle files,

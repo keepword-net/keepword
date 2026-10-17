@@ -145,6 +145,17 @@ impl Report {
         });
     }
 
+    /// Replace the check called `name`, or add it if there is none.
+    pub fn set(&mut self, name: &str, status: Status, detail: impl Into<String>) {
+        match self.checks.iter_mut().find(|c| c.name == name) {
+            Some(c) => {
+                c.status = status;
+                c.detail = detail.into();
+            }
+            None => self.push(name, status, detail),
+        }
+    }
+
     pub fn ok(&self) -> bool {
         self.checks.iter().all(|c| c.status != Status::Fail)
     }
@@ -476,15 +487,9 @@ fn check_anchor(r: &mut Report, att: &SignedAttestation, anchor: &Anchor) {
     match anchor.claims() {
         Err(e) => r.push("anchor", Status::Fail, e.to_string()),
         Ok(claims) => {
-            let blocks: Vec<String> = claims
-                .iter()
-                .filter_map(|c| match c.attestation {
-                    ots::Attestation::Bitcoin { height } => Some(format!(
-                        "block {height} (merkle root {})",
-                        c.bitcoin_merkle_root_hex().unwrap_or_default()
-                    )),
-                    _ => None,
-                })
+            let blocks: Vec<String> = ots::bitcoin_blocks(&claims)
+                .into_iter()
+                .map(|(height, root)| format!("block {height} (merkle root {root})"))
                 .collect();
             let detail = if blocks.is_empty() {
                 format!("leaf {idx} of anchored head; timestamp still pending at the calendars")
