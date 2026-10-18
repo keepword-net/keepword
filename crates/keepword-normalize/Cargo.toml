@@ -9,9 +9,9 @@ repository.workspace = true
 
 [dependencies]
 keepword-core.workspace = true
-ego-tree = "0.6"
+ego-tree = "0.11"
 # The version scraper builds on: the parser fills a scraper `Html`.
-html5ever = "0.27"
+html5ever = "0.39"
 encoding_rs.workspace = true
 regex.workspace = true
 scraper.workspace = true

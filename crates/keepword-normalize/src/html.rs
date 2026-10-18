@@ -13,19 +13,18 @@
 //! Lines are diffable, human-readable and stable under the noise the plan
 //! calls out (ads, timestamps, CSRF tokens, relative times).
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use ego_tree::NodeId;
 use ego_tree::iter::Children;
-use html5ever::LocalName;
 use html5ever::tendril::StrTendril;
 use html5ever::tokenizer::{
     BufferQueue, Tag, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
-    TokenizerResult,
 };
 use html5ever::tree_builder::{Tracer, TreeBuilder, TreeBuilderOpts};
-use scraper::{ElementRef, Html, Node, Selector};
+use html5ever::{LocalName, TokenizerResult};
+use scraper::{ElementRef, Html, HtmlTreeSink, Node, Selector};
 use url::Url;
 
 use crate::clock::mask_now;
@@ -127,8 +126,8 @@ impl Tracer for Count {
 /// Past the bound, SVG and MathML elements with void or raw-text names are
 /// closed at once.
 struct Bounded {
-    tb: TreeBuilder<NodeId, Html>,
-    dropped: HashMap<LocalName, usize>,
+    tb: TreeBuilder<NodeId, HtmlTreeSink>,
+    dropped: RefCell<HashMap<LocalName, usize>>,
     max_nodes: usize,
 }
 
@@ -143,8 +142,8 @@ impl Bounded {
 impl TokenSink for Bounded {
     type Handle = NodeId;
 
-    fn process_token(&mut self, mut token: Token, line: u64) -> TokenSinkResult<NodeId> {
-        if self.tb.sink.tree.nodes().len() > self.max_nodes && token != Token::EOFToken {
+    fn process_token(&self, mut token: Token, line: u64) -> TokenSinkResult<NodeId> {
+        if self.tb.sink.0.borrow().tree.nodes().len() > self.max_nodes && token != Token::EOFToken {
             return TokenSinkResult::Continue;
         }
         if let Token::TagToken(Tag {
@@ -154,6 +153,7 @@ impl TokenSink for Bounded {
             ..
         }) = &mut token
         {
+            let mut dropped = self.dropped.borrow_mut();
             let start = *kind == TagKind::StartTag;
             let opens = start && !opens_nothing(name);
             let foreign = start
@@ -162,12 +162,12 @@ impl TokenSink for Bounded {
                 && self
                     .tb
                     .adjusted_current_node_present_but_not_in_html_namespace();
-            if opens || foreign || (*kind == TagKind::EndTag && !self.dropped.is_empty()) {
+            if opens || foreign || (*kind == TagKind::EndTag && !dropped.is_empty()) {
                 if self.state() < MAX_PARSER_STATE {
                     // Back below the bound, the elements dropped at it would
                     // have been closed by now: their names mustn't take the
                     // end tags of later elements.
-                    self.dropped.clear();
+                    dropped.clear();
                 } else if foreign {
                     // Closed, not dropped: where HTML's rules apply again,
                     // as in an SVG <foreignObject>, they ignore the flag on
@@ -176,10 +176,10 @@ impl TokenSink for Bounded {
                     *self_closing = true;
                 } else if opens {
                     if !*self_closing {
-                        *self.dropped.entry(name.clone()).or_default() += 1;
+                        *dropped.entry(name.clone()).or_default() += 1;
                     }
                     return TokenSinkResult::Continue;
-                } else if let Some(n) = self.dropped.get_mut(name).filter(|n| **n > 0) {
+                } else if let Some(n) = dropped.get_mut(name).filter(|n| **n > 0) {
                     *n -= 1;
                     return TokenSinkResult::Continue;
                 }
@@ -188,7 +188,7 @@ impl TokenSink for Bounded {
         self.tb.process_token(token, line)
     }
 
-    fn end(&mut self) {
+    fn end(&self) {
         self.tb.end();
     }
 
@@ -205,18 +205,22 @@ impl TokenSink for Bounded {
 /// input doesn't have: 160 kB could build 10 million of them. The tree may
 /// have one node per two bytes of input; the rest of the input is ignored.
 fn parse(html: &str) -> Html {
-    let tb = TreeBuilder::new(Html::new_document(), TreeBuilderOpts::default());
+    let tb = TreeBuilder::new(
+        HtmlTreeSink::new(Html::new_document()),
+        TreeBuilderOpts::default(),
+    );
     let sink = Bounded {
         tb,
-        dropped: HashMap::new(),
+        dropped: RefCell::default(),
         max_nodes: html.len() / 2 + 65_536,
     };
-    let mut tok = Tokenizer::new(sink, TokenizerOpts::default());
-    let mut input = BufferQueue::default();
+    let tok = Tokenizer::new(sink, TokenizerOpts::default());
+    let input = BufferQueue::default();
     input.push_back(StrTendril::from(html));
-    while let TokenizerResult::Script(_) = tok.feed(&mut input) {}
+    // Past scripts and `<meta charset>`: the input is already decoded.
+    while !matches!(tok.feed(&input), TokenizerResult::Done) {}
     tok.end();
-    tok.sink.tb.sink
+    tok.sink.tb.sink.0.into_inner()
 }
 
 struct Walker<'a> {
@@ -579,16 +583,19 @@ mod tests {
 
     /// The parser's state once it has read `html`.
     fn state_after(html: &str) -> usize {
-        let tb = TreeBuilder::new(Html::new_document(), TreeBuilderOpts::default());
+        let tb = TreeBuilder::new(
+            HtmlTreeSink::new(Html::new_document()),
+            TreeBuilderOpts::default(),
+        );
         let sink = Bounded {
             tb,
-            dropped: HashMap::new(),
+            dropped: RefCell::default(),
             max_nodes: usize::MAX,
         };
-        let mut tok = Tokenizer::new(sink, TokenizerOpts::default());
-        let mut input = BufferQueue::default();
+        let tok = Tokenizer::new(sink, TokenizerOpts::default());
+        let input = BufferQueue::default();
         input.push_back(StrTendril::from(html));
-        while let TokenizerResult::Script(_) = tok.feed(&mut input) {}
+        while !matches!(tok.feed(&input), TokenizerResult::Done) {}
         tok.sink.state()
     }
 
