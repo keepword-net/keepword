@@ -13,7 +13,7 @@ use tokio::net::TcpListener;
 async fn records_certificate_fingerprint() {
     let ck = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let cert_der: CertificateDer<'static> = ck.cert.der().clone();
-    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(ck.key_pair.serialize_der()));
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(ck.signing_key.serialize_der()));
 
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let server = rustls::ServerConfig::builder_with_provider(provider)

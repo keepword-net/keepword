@@ -7,7 +7,7 @@
 #
 # See packaging/docker/compose.yaml and docs/INSTALL.md for the settings.
 
-FROM rust:1-bookworm AS build
+FROM rust:1-trixie AS build
 WORKDIR /src
 COPY . .
 # Set to "render" for headless-browser capture (also install Chromium below).
@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked -p keepword ${FEATURES:+--features $FEATURES} \
     && install -m 0755 target/release/keepword /usr/local/bin/keepword
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \

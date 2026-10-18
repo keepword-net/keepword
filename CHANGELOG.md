@@ -9,6 +9,13 @@ only change incompatibly in a new major version.
 
 ### Changed
 - **New default seed**, a new default seed has been hosted at ```seed2.keepword.net```, added it to default seeds.
+- **Dependencies are updated to their latest versions**, among them
+  reqwest 0.13, rusqlite 0.40, scraper 0.27 and ed25519-dalek 3. HTTPS
+  uses aws-lc-rs instead of ring and still checks certificates against
+  the system's roots. The normalizer's output is unchanged on the test
+  corpus.
+- **The container image is built on Debian 13 (trixie)** instead of
+  Debian 12 (bookworm).
 
 ### Fixed
 
