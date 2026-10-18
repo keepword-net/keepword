@@ -28,10 +28,10 @@ on:
 
 jobs:
   shellcheck:
-    runs-on: ubuntu-latest
+    runs-on: debian
     steps:
       - uses: https://github.com/actions/checkout@v7
-      - run: command -v shellcheck || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
+      - run: command -v shellcheck || { apt-get update -qq && apt-get install -y -qq shellcheck >/dev/null; }
       - run: shellcheck -s sh scripts/install.sh scripts/ci/installer-smoke.sh packaging/docker/entrypoint.sh
 
   # A real systemd host: install, run, upgrade, purge. Nodes started in CI
@@ -72,13 +72,11 @@ jobs:
           if id keepword; then echo "user not removed"; exit 1; fi
           test ! -e /var/lib/keepword
 
-  # Fresh containers: package installation, rustup, build, service files.
-  # The job runs inside the distro image, which has no Node for
-  # actions/checkout, so it fetches the source with git.
+  # Distro containers (the ci/<distro> images): package installation, build,
+  # service files. The images ship Rust, git, curl and Node, so only the
+  # init system and procps are added here.
   distros:
-    runs-on: docker
-    container:
-      image: ${{ matrix.image }}
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: sh
@@ -86,37 +84,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: debian:bookworm
-            prep: apt-get update -qq && apt-get install -y -qq systemd curl git ca-certificates >/dev/null
+          - os: debian
+            prep: apt-get update -qq && apt-get install -y -qq systemd >/dev/null
             init: systemd
-          - image: fedora:41
-            prep: dnf install -y -q systemd procps-ng git
+          - os: fedora
+            prep: dnf install -y -q systemd procps-ng
             init: systemd
-          - image: archlinux:latest
-            prep: pacman -Syu --noconfirm --needed systemd procps-ng git >/dev/null
+          - os: arch
+            prep: pacman -Syu --noconfirm --needed systemd procps-ng >/dev/null
             init: systemd
-          - image: alpine:3.20
-            prep: apk add --no-cache -q openrc curl procps git
+          - os: alpine
+            prep: apk add --no-cache -q openrc procps
             init: openrc
           # The latest release's binary, with the installer piped to sh.
-          - image: debian:bookworm
-            prep: apt-get update -qq && apt-get install -y -qq systemd curl git ca-certificates >/dev/null
+          - os: debian
+            prep: apt-get update -qq && apt-get install -y -qq systemd >/dev/null
             init: systemd
             mode: binary
-          - image: alpine:3.20
-            prep: apk add --no-cache -q openrc curl procps git
+          - os: alpine
+            prep: apk add --no-cache -q openrc procps
             init: openrc
             mode: binary
     steps:
-      - name: Prepare ${{ matrix.image }}
+      - uses: https://github.com/actions/checkout@v7
+      - name: Prepare ${{ matrix.os }}
         run: ${{ matrix.prep }}
-      - name: Fetch the source
-        run: |
-          git init -q /src
-          git -C /src fetch -q --depth 1 "${{ github.server_url }}/${{ github.repository }}.git" "${{ github.ref }}"
-          git -C /src checkout -q FETCH_HEAD
       - name: Installer smoke test
-        run: sh /src/scripts/ci/installer-smoke.sh ${{ matrix.init }} ${{ matrix.mode }}
+        run: sh scripts/ci/installer-smoke.sh ${{ matrix.init }} ${{ matrix.mode }}
 
   docker:
     runs-on: host

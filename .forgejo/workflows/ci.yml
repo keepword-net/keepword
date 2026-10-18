@@ -25,7 +25,7 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: rust
     steps:
       - uses: https://github.com/actions/checkout@v7
       - uses: https://github.com/dtolnay/rust-toolchain@stable
@@ -40,7 +40,7 @@ jobs:
   # The TLSNotary tier is its own workspace (large git dependencies, Rust
   # 1.95+). Release mode: MPC-TLS is slow unoptimized.
   tlsn:
-    runs-on: ubuntu-latest
+    runs-on: rust
     timeout-minutes: 30
     defaults:
       run:
