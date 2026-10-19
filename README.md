@@ -218,9 +218,11 @@ curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/in
 This installs the latest release's static binary, creates a sandboxed
 `keepword` service with its own user, fetches the IP-to-ASN table and
 refreshes it weekly, detects the node's network, and puts the peer API behind
-Caddy with automatic TLS. Re-run it to upgrade. To build from source instead
-(needed for `--render` and `--notary`), drop `--binary`, or run the installer
-from a checkout:
+Caddy with automatic TLS. No domain? Pass `--public-api 0.0.0.0:8481`
+instead of `--domain` and `--caddy`, and open port 8481: the node is then
+reached at `http://<its IP>:8481`. Re-run it to upgrade. To build from
+source instead (needed for `--render` and `--notary`), drop `--binary`, or
+run the installer from a checkout:
 
 ```sh
 git clone https://git.keepword.net/keepword/keepword.git && cd keepword
