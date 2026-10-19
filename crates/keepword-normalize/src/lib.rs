@@ -12,8 +12,10 @@ mod html;
 mod noise;
 pub mod rules;
 
+use std::io::Read;
 use std::sync::LazyLock;
 
+use flate2::read::MultiGzDecoder;
 use keepword_core::{Digest, NormCommitment};
 use regex::bytes::Regex;
 use url::Url;
@@ -115,6 +117,11 @@ pub fn normalize_with(
     fetched_at_ms: i64,
 ) -> Normalized {
     let kind = detect(content_type, body);
+    let inflated = match kind {
+        Kind::Opaque => None,
+        _ => gunzip(body),
+    };
+    let body = inflated.as_deref().unwrap_or(body);
     let mut text = format!("keepword-norm/{VERSION} {}\n", kind.label());
     match kind {
         Kind::Html => {
@@ -147,6 +154,23 @@ pub fn normalize_with(
         commitment,
         rules: rules.cloned(),
     }
+}
+
+/// As much as a capture may hold: a small gzip can inflate a thousandfold.
+const MAX_INFLATED: u64 = 32 * 1024 * 1024;
+
+/// A gzipped text body, inflated. Servers may compress although the request
+/// accepted no encoding, and the body is hashed as served.
+fn gunzip(body: &[u8]) -> Option<Vec<u8>> {
+    if !body.starts_with(&[0x1f, 0x8b]) {
+        return None;
+    }
+    let mut out = Vec::new();
+    MultiGzDecoder::new(body)
+        .take(MAX_INFLATED)
+        .read_to_end(&mut out)
+        .ok()?;
+    Some(out)
 }
 
 fn push_text(out: &mut String, s: &str, fetched_at_ms: i64) {
@@ -315,6 +339,27 @@ mod tests {
         let body = b"<html><head><meta charset=\"iso-8859-1\"></head><body><p>Gr\xfc\xdfe</p></body></html>";
         let n = Normalizer::default().normalize(&url, Some("text/html"), body, 0);
         assert!(n.text.contains("p: Grüße"), "{}", n.text);
+    }
+
+    #[test]
+    fn gzipped_bodies() {
+        use flate2::{Compression, write::GzEncoder};
+        use std::io::Write;
+        let gzip = |b: &[u8]| {
+            let mut e = GzEncoder::new(Vec::new(), Compression::default());
+            e.write_all(b).unwrap();
+            e.finish().unwrap()
+        };
+        let url = Url::parse("https://news.example/article/1").unwrap();
+        let n = Normalizer::default().normalize(
+            &url,
+            Some("text/html; charset=utf-8"),
+            &gzip(PAGE.as_bytes()),
+            0,
+        );
+        assert_eq!(n.commitment, norm(PAGE).commitment);
+        let bomb = gzip(&vec![0; 2 * MAX_INFLATED as usize]);
+        assert_eq!(gunzip(&bomb).unwrap().len() as u64, MAX_INFLATED);
     }
 
     #[test]

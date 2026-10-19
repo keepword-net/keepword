@@ -223,6 +223,8 @@ The rules:
   modified dates (Open Graph meta or JSON-LD). A changed `modified:` line
   is how a publisher *discloses* an edit in machine-readable form.
 - **Charset**: Content-Type, then BOM, then `<meta charset>`, then UTF-8.
+  A gzipped text body is inflated first, up to 32 MiB: servers may compress
+  although the request accepts no encoding. It is hashed as served.
 - **Limits**: start tags nested more than 512 deep are ignored, and their
   text stays in the element they would have opened in (Chromium and
   Safari don't nest deeper either). In SVG and MathML, where `<link>`,
