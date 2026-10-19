@@ -1072,14 +1072,6 @@ fn status_warnings(node: &Node, located: bool) -> Result<Vec<String>> {
     } else if peers.is_empty() && cfg.network.bootstrap().is_empty() {
         w.push("no peers to join through: set network.peers to any witness's address".to_string());
     }
-    if let Some(ep) = &cfg.network.endpoint
-        && ep.starts_with("http://")
-        && !cfg.network.allow_private_peers
-    {
-        w.push(format!(
-            "endpoint {ep} is plain HTTP; public nodes should use https"
-        ));
-    }
     if cfg.quorum.asn_db.is_none() {
         w.push(
             "no IP-to-ASN table (quorum.asn_db), so no witness's location can be corroborated"
