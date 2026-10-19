@@ -15,7 +15,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: debian
     steps:
       - name: Deploy keepword.net over SSH
         env:
