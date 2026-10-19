@@ -73,7 +73,8 @@ Network:
                         proxy; the API itself binds to 127.0.0.1:8481
   --caddy               Install and configure Caddy for --domain (automatic TLS)
   --public-api ADDR     Bind the API directly on ADDR (e.g. 0.0.0.0:8481)
-  --endpoint URL        Public API URL to advertise (default: from --domain)
+  --endpoint URL        Public API URL to advertise (default: https://NAME with
+                        --domain, http://PUBLIC-IP:PORT with --public-api)
   --peer URL            Bootstrap peer; repeat for several
   --no-seeds            Don't join through the project's seed witnesses (a
                         separate network, or a test install)
@@ -571,6 +572,13 @@ fi
 # ---------------------------------------------------------------- network
 
 step "Configuring the network"
+# Without a domain, the server's own address: everything peers fetch from
+# it is signed, so plain HTTP does.
+if [ -n "$PUBLIC_API" ] && [ -z "$ENDPOINT" ] && [ "$DETECT" -eq 1 ] \
+    && [ -z "$(keepword config get network.endpoint)" ]; then
+    ip=$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)
+    case "$ip" in ''|*[!0-9.]*) ;; *) ENDPOINT="http://$ip:${PUBLIC_API##*:}" ;; esac
+fi
 if [ -n "$ENDPOINT" ]; then
     keepword config set network.endpoint "$ENDPOINT"
     info "advertising $ENDPOINT"
@@ -594,8 +602,7 @@ if [ -z "$(keepword config get network.endpoint)" ]; then
     if [ -n "$PUBLIC_API" ]; then
         warn "the API listens on $PUBLIC_API, but no endpoint is advertised, so peers"
         warn "can't mirror this node and it is never assigned requests. Re-run with"
-        warn "  --endpoint https://your.domain:${PUBLIC_API##*:}   (public network)"
-        warn "  --endpoint http://this-node-ip:${PUBLIC_API##*:}   (private test network)"
+        warn "  --endpoint http://this-node-ip:${PUBLIC_API##*:}"
     elif [ -z "$PEERS" ] && [ "$UPGRADE" -eq 0 ]; then
         info "standalone node (no endpoint or peers); join a network later with"
         info "  keepword config set network.endpoint https://your.domain"

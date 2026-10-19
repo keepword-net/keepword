@@ -66,8 +66,9 @@ sudo sh scripts/install.sh --domain witness.example.org --caddy \
 # A public witness behind your own reverse proxy
 sudo sh scripts/install.sh --domain witness.example.org
 
-# The API directly on a public port (you handle TLS elsewhere)
-sudo sh scripts/install.sh --public-api 0.0.0.0:8481 --endpoint https://witness.example.org:8481
+# A public witness without a domain: the API directly on port 8481,
+# advertised as http://<this server's IP>:8481
+sudo sh scripts/install.sh --public-api 0.0.0.0:8481
 
 # A private watchdog: no network, hashes and diffs only
 sudo sh scripts/install.sh --no-asn-db

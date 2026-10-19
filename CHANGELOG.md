@@ -7,6 +7,13 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+### Changed
+
+- **A witness needs no domain.** With `--public-api` and no `--endpoint`,
+  the installer advertises `http://<public IP>:<port>`. Before, it
+  advertised nothing, so the witness was never assigned requests. Peers
+  always accepted plain HTTP: everything they fetch is signed.
+
 ## [2.3.0] - 2026-10-19
 
 A second default seed, a normalizer that no longer raises silent-edit
