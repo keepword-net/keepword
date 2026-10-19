@@ -104,7 +104,7 @@ cargo test --release
 If you touched `scripts/` or `packaging/`:
 
 ```sh
-shellcheck -s sh scripts/install.sh scripts/ci/installer-smoke.sh packaging/docker/entrypoint.sh
+shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh
 ```
 
 CI also installs the node on several distributions and in a container.
