@@ -334,15 +334,10 @@ async fn poll_once(
     stamp: &AtomicI64,
     answer: Option<Answer>,
 ) -> anyhow::Result<Option<Relayed>> {
-    // Each poll is signed at a distinct time: a relay refuses one it has
-    // seen.
-    let now = now_ms();
-    let after = |t: i64| t.max(now - 1) + 1;
-    let sent_at_ms = after(
-        stamp
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |t| Some(after(t)))
-            .expect("always updates"),
-    );
+    // Each poll is signed at a distinct time, now or just after: a relay
+    // refuses one it has seen.
+    stamp.fetch_max(now_ms() - 1, Ordering::SeqCst);
+    let sent_at_ms = stamp.fetch_add(1, Ordering::SeqCst) + 1;
     let poll = RelayPoll {
         witness: node.key.public(),
         relay,
