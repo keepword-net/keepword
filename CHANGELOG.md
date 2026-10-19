@@ -51,6 +51,10 @@ the upgrade with the one before. Upgrade every witness.
   responses obfuscated its email addresses.** Addresses hidden as
   `[email protected]` are decoded, and the obfuscated `mailto:` links
   are dropped like the plain ones.
+- **A page served gzipped normalized to garbage.** Keepword's requests
+  accept no encoding, which allows any, and Amazon gzips some responses
+  anyway, so each capture differed from the last. A gzipped text body is
+  inflated before normalizing, up to 32 MiB; it is still hashed as served.
 - **`keepword verify --esplora` left the anchor unchecked.** The chain's
   answer went into a separate `bitcoin` line, while the `anchor` line
   stayed skipped and the summary said there was no checked anchor. The
