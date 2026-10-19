@@ -1,7 +1,8 @@
 name: Release
 
-# Push a tag like v1.0.0 to build static Linux binaries and publish a
-# Forgejo release with them, their checksums and the changelog entry.
+# Push a tag like v1.0.0 to build static Linux binaries, publish a Forgejo
+# release with them, their checksums and the changelog entry, then publish
+# the crates to crates.io.
 on:
   push:
     tags: ["v*"]
@@ -96,3 +97,14 @@ jobs:
             curl -fsS -X POST -H "Authorization: token $TOKEN" \
               -F "attachment=@$f" "$API/releases/$id/assets?name=$(basename "$f")" >/dev/null
           done
+
+  # Last, as it can't be undone. All crates in dependency order; needs the
+  # CARGO_REGISTRY_TOKEN secret, a crates.io token with publish-update scope.
+  crates:
+    needs: release
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v7
+      - run: cargo publish --workspace --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
