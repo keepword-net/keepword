@@ -45,7 +45,7 @@ touches.
 
 ## Setting up
 
-You need Rust 1.90 or newer (`rustup` or your distribution's package).
+You need Rust 1.95 or newer (`rustup` or your distribution's package).
 With Nix, `nix develop` (or direnv, using the `.envrc`) gives you a shell
 with the toolchain, clippy and rustfmt.
 
@@ -61,8 +61,8 @@ Two parts build separately:
   (`cargo build --features keepword/render`) and needs Chrome or Chromium
   to run.
 - **The TLSNotary tier** in `crates/keepword-tlsn` is its own workspace
-  with large git dependencies and needs Rust 1.95 or newer. Build and test
-  it from that directory, in release mode: MPC-TLS is slow unoptimized.
+  with large git dependencies. Build and test it from that directory, in
+  release mode: MPC-TLS is slow unoptimized.
 
 ### Don't join the real network by accident
 
