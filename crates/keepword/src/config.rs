@@ -45,8 +45,16 @@ pub struct Config {
 #[serde(deny_unknown_fields, default)]
 pub struct NetworkConfig {
     /// Public base URL of this node's API. Leave unset for a node that can't
-    /// accept connections; it still pushes and pulls but isn't mirrored.
+    /// accept connections; it still pushes and pulls but isn't mirrored,
+    /// unless it has a `relay`.
     pub endpoint: Option<String>,
+    /// For a node that can't accept connections: a witness that relays for
+    /// it, or `auto` for one of its peers. Peers reach this node at
+    /// `<relay>/v1/relay/<key>`, through its own connection to the relay.
+    pub relay: Option<String>,
+    /// Relay for up to this many witnesses that can't accept connections;
+    /// 0 = none. A relay stores nothing, it passes requests on.
+    pub relay_witnesses: usize,
     /// Peer base URLs to bootstrap from, in addition to the default seeds.
     pub peers: Vec<String>,
     /// Also bootstrap from the project's default seeds (`DEFAULT_SEEDS`).
@@ -110,6 +118,8 @@ impl Default for NetworkConfig {
     fn default() -> Self {
         NetworkConfig {
             endpoint: None,
+            relay: None,
+            relay_witnesses: 8,
             peers: vec![],
             seeds: true,
             sync_interval_secs: 60,
@@ -314,7 +324,8 @@ impl NetworkConfig {
             .endpoint
             .as_deref()
             .map(|e| e.trim_end_matches('/').to_string());
-        let mut out: Vec<String> = self.peers.clone();
+        let relay = self.relay.iter().filter(|r| *r != "auto");
+        let mut out: Vec<String> = self.peers.iter().chain(relay).cloned().collect();
         if self.seeds && !self.allow_private_peers {
             out.extend(DEFAULT_SEEDS.iter().map(|s| s.to_string()));
         }
@@ -346,6 +357,10 @@ impl Config {
         }
         for (name, url) in [
             ("network.endpoint", self.network.endpoint.as_deref()),
+            (
+                "network.relay",
+                self.network.relay.as_deref().filter(|r| *r != "auto"),
+            ),
             ("beacon.drand_url", self.beacon.drand()),
             ("anchor.esplora_url", self.anchor.esplora()),
         ] {
@@ -356,6 +371,9 @@ impl Config {
                     bail!("{name} must be an http(s) URL, got {u:?}");
                 }
             }
+        }
+        if self.network.endpoint.is_some() && self.network.relay.is_some() {
+            bail!("set network.endpoint or network.relay, not both");
         }
         if let Some(h) = &self.network.client_ip_header
             && axum::http::HeaderName::from_bytes(h.as_bytes()).is_err()
@@ -582,10 +600,18 @@ mod tests {
         assert!(c.set_path("vantage.country", Some("de")).is_err());
         assert!(c.set_path("network.endpoint", Some("ftp://x")).is_err());
         assert!(c.set_path("nosuch.key", Some("1")).is_err());
+        // A node is reached at its endpoint or through a relay.
+        assert!(
+            c.set_path("network.relay", Some("https://r.example"))
+                .is_err()
+        );
         assert_eq!(c.vantage.asn, Some(3320));
 
         c.set_path("network.endpoint", None).unwrap();
         assert!(c.network.endpoint.is_none());
+        c.set_path("network.relay", Some("https://r.example"))
+            .unwrap();
+        assert!(c.network.bootstrap().contains(&"https://r.example".into()));
         // Round-trips through the file format.
         let back: Config = toml::from_str(&toml::to_string_pretty(&c).unwrap()).unwrap();
         assert_eq!(back.vantage.asn, Some(3320));

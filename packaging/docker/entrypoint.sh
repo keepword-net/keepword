@@ -5,6 +5,7 @@
 #   KEEPWORD_ASN, KEEPWORD_COUNTRY   where this node is (self-reported)
 #   KEEPWORD_RETAIN                  full | normalized (default) | none (first start only)
 #   KEEPWORD_ENDPOINT                public URL of the peer API
+#   KEEPWORD_RELAY                   instead, at home: auto, or a relay witness
 #   KEEPWORD_PEERS                   comma-separated bootstrap peer URLs
 #   KEEPWORD_SEEDS=0                 don't join through the default seeds
 #   KEEPWORD_BEHIND_PROXY=1          trust X-Forwarded-For from your proxy
@@ -25,6 +26,7 @@ if [ ! -f "$dir/keepword.toml" ]; then
 fi
 
 [ -z "${KEEPWORD_ENDPOINT:-}" ] || cfg network.endpoint "$KEEPWORD_ENDPOINT"
+[ -z "${KEEPWORD_RELAY:-}" ] || cfg network.relay "$KEEPWORD_RELAY"
 if [ -n "${KEEPWORD_PEERS:-}" ]; then
     list=$(printf '%s' "$KEEPWORD_PEERS" | awk -F, '{for (i = 1; i <= NF; i++) printf "%s\"%s\"", (i > 1 ? ", " : ""), $i}')
     cfg network.peers "[$list]"

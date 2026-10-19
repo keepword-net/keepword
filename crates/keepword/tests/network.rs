@@ -874,3 +874,107 @@ async fn forks_are_found_behind_a_flood_of_old_heads() {
             .contains(&d_key)
     );
 }
+
+/// A witness that can't accept connections finds a relay among the
+/// witnesses it knows, which all relay by default, and reaches the network
+/// through it: peers audit its log, assign it requests and count its
+/// captures, all through its own connection to the relay.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn witness_behind_a_relay() {
+    let site = content_server().await;
+    let a = spawn(64501, "DE", "witness-a", vec![]).await;
+    let boot = vec![a.endpoint.clone()];
+    let b = spawn(64502, "FR", "witness-b", boot.clone()).await;
+    let c = spawn(64503, "NL", "witness-c", boot.clone()).await;
+    let home = spawn_with(64504, "US", "witness-home", boot, |c| {
+        c.network.endpoint = None;
+        c.network.relay = Some("auto".into());
+    })
+    .await;
+    tokio::spawn(keepword::relay::client(home.node.clone(), |_| {}));
+    let home_key = home.node.key.public();
+    let mut relayed = None;
+    for _ in 0..50 {
+        relayed = home.node.endpoint();
+        if relayed.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    // Knowing no peers yet, it asks the one it bootstraps from.
+    let relayed = relayed.expect("taken by a relay");
+    assert_eq!(relayed, format!("{}/v1/relay/{home_key}", a.endpoint));
+    let nodes = [a, b, c, home];
+    sync_all(&nodes, 2).await;
+    for n in &nodes[..3] {
+        let p = n.node.store.peer(&home_key).unwrap().unwrap();
+        assert_eq!(p.endpoint.as_deref(), Some(relayed.as_str()));
+    }
+
+    // Its log is audited and cosigned through the relay.
+    let cap = nodes[3]
+        .node
+        .capture(&format!("{site}/page/home"), false)
+        .await
+        .unwrap();
+    sync_all(&nodes, 2).await;
+    for n in &nodes[..3] {
+        let p = n.node.store.peer(&home_key).unwrap().unwrap();
+        assert_eq!(p.head.unwrap().head.size, 1, "audited head");
+    }
+    let bundle = nodes[3].node.bundle(&cap.record, false).unwrap();
+    assert_eq!(bundle.inclusion.unwrap().cosignatures.len(), 3);
+
+    // It is assigned requests, and its captures count.
+    let requested = format!("{site}/page/watched");
+    nodes[1]
+        .node
+        .request_watch(&requested, 600, 86_400_000, false)
+        .unwrap();
+    sync_all(&nodes, 2).await;
+    for n in &nodes {
+        let w = n.node.store.watches().unwrap();
+        assert!(
+            w.iter()
+                .any(|w| w.url == requested && w.request_id.is_some())
+        );
+        keepword::web::run_due(&n.node, |_| {}).await.unwrap();
+    }
+    sync_all(&nodes, 2).await;
+    nodes[1].node.refresh_url(&requested).await.unwrap();
+    assert_eq!(nodes[1].node.verdict(&requested).unwrap().considered, 4);
+
+    // Peers observe it connecting itself; it observes nobody, as their
+    // pushes reach it through the relay.
+    for n in &nodes[..3] {
+        let k = n.node.key.public();
+        assert!(n.node.store.observation(&home_key, &k).unwrap().is_some());
+        assert!(
+            nodes[3]
+                .node
+                .store
+                .observation(&k, &home_key)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    // Another witness can't poll for its requests.
+    let poll = keepword_core::statement::Signed::sign(
+        keepword_core::net::RelayPoll {
+            witness: nodes[1].node.key.public(),
+            relay: nodes[0].node.key.public(),
+            sent_at_ms: keepword_core::now_ms(),
+        },
+        &nodes[1].node.key,
+    )
+    .unwrap();
+    let r = reqwest::Client::new()
+        .post(&relayed)
+        .header("content-type", "application/json")
+        .body(serde_json::json!({ "poll": poll, "answer": null }).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 403);
+}

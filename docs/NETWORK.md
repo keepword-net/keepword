@@ -23,7 +23,7 @@ So a real network needs:
 | **At least 3 witnesses, each in a different ASN** | "Agreed" needs 3 ASNs (`quorum.min_asns`). A node places another witness where it saw that witness connect itself (every witness pushes to every peer within about a day), and learns its own location from observers on 2 other networks (`quorum.min_observers`). |
 | **At least 2 countries** | Assignment takes at most 2 witnesses per country (`network.max_per_country`). With the default 5 witnesses per request, 3 or more countries fill every slot. |
 | **Different operators** | The software can only check networks. Witnesses run by one person agree because one person runs them. For evidence others trust, each witness should be run by a different person or organization. |
-| **A public endpoint on every witness** | Peers audit a witness's log and fetch its attestations through its endpoint: HTTPS at a domain, or plain HTTP at the server's IP (`--public-api`), as everything they fetch is signed. A witness without one is never assigned requests and doesn't count toward verdicts. |
+| **A public endpoint on every witness** | Peers audit a witness's log and fetch its attestations through its endpoint: HTTPS at a domain, plain HTTP at the server's IP (`--public-api`), as everything they fetch is signed, or, at home, behind NAT, a relay (`--relay`, DESIGN.md §6.9). A witness without one is never assigned requests and doesn't count toward verdicts. |
 | **An accurate clock** | Messages more than 5 minutes off are rejected. |
 
 Different providers usually means different ASNs: for example Hetzner
@@ -36,6 +36,12 @@ proxy, it is the VPN's network.
 A good first network is **5 witnesses, run by 3 or more people, at 5
 different providers, in 3 countries.** Three witnesses is the minimum that
 works at all.
+
+A witness at home counts as its home network and sees pages as visitors
+do, but can't accept connections: install it with `--relay auto`, and it
+is reached through one of the witnesses it knows (or `--relay URL`, a
+given one). Every witness relays for up to `network.relay_witnesses`
+others (8, at most 2 per address): it only passes requests on.
 
 ## 2. Before you start (every witness)
 

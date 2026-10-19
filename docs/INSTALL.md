@@ -70,6 +70,10 @@ sudo sh scripts/install.sh --domain witness.example.org
 # advertised as http://<this server's IP>:8481
 sudo sh scripts/install.sh --public-api 0.0.0.0:8481
 
+# A witness at home, behind a router: peers reach it through one of the
+# witnesses it knows, which relay for others
+sudo sh scripts/install.sh --relay auto
+
 # A private watchdog: no network, hashes and diffs only
 sudo sh scripts/install.sh --no-asn-db
 
@@ -230,6 +234,7 @@ Or `docker compose -f packaging/docker/compose.yaml up -d`. Settings:
 | `KEEPWORD_ASN`, `KEEPWORD_COUNTRY` | where the node is (first start) |
 | `KEEPWORD_RETAIN` | `full`, `normalized` (default) or `none` (first start) |
 | `KEEPWORD_ENDPOINT` | public URL of the peer API |
+| `KEEPWORD_RELAY` | instead of an endpoint, at home: `auto`, or a witness that relays for this one |
 | `KEEPWORD_PEERS` | comma-separated bootstrap peers |
 | `KEEPWORD_SEEDS=0` | don't join through the default seeds (a separate network, or a test) |
 | `KEEPWORD_BEHIND_PROXY=1` | trust `X-Forwarded-For` from your proxy |

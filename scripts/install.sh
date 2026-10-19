@@ -40,6 +40,7 @@ ASN=""
 COUNTRY=""
 DOMAIN=""
 ENDPOINT=""
+RELAY=""
 PUBLIC_API=""
 PEERS=""
 SEEDS=1
@@ -74,6 +75,9 @@ Network:
   --public-api ADDR     Bind the API directly on ADDR (e.g. 0.0.0.0:8481)
   --endpoint URL        Public API URL to advertise (default: https://NAME with
                         --domain, http://PUBLIC-IP:PORT with --public-api)
+  --relay URL|auto      For a node that can't accept connections (at home):
+                        peers reach it through this witness, or with auto
+                        through one of the witnesses it knows
   --peer URL            Bootstrap peer; repeat for several
   --no-seeds            Don't join through the project's seed witnesses (a
                         separate network, or a test install)
@@ -135,6 +139,7 @@ while [ $# -gt 0 ]; do
         --caddy) CADDY=1 ;;
         --public-api) need_arg "$@"; PUBLIC_API=$2; shift ;;
         --endpoint) need_arg "$@"; ENDPOINT=$2; shift ;;
+        --relay) need_arg "$@"; RELAY=$2; shift ;;
         --peer) need_arg "$@"; PEERS="$PEERS $2"; shift ;;
         --no-seeds) SEEDS=0 ;;
         --no-asn-db) ASN_DB=0 ;;
@@ -164,6 +169,8 @@ case "$COUNTRY" in ''|[A-Z][A-Z]) ;; *) die "--country must be a two-letter code
 case "$RETAIN" in ''|full|normalized|none) ;; *) die "--retain must be full, normalized or none" ;; esac
 [ "$CADDY" -eq 0 ] || [ -n "$DOMAIN" ] || die "--caddy needs --domain"
 [ -z "$DOMAIN" ] || [ -z "$PUBLIC_API" ] || die "use either --domain or --public-api, not both"
+[ -z "$RELAY" ] || [ -z "$DOMAIN$PUBLIC_API$ENDPOINT" ] \
+    || die "--relay replaces --domain, --public-api and --endpoint"
 [ "$PURGE" -eq 0 ] || [ "$UNINSTALL" -eq 1 ] || die "--purge only works with --uninstall"
 case "$INIT" in ''|systemd|openrc|none) ;; *) die "--init must be systemd, openrc or none" ;; esac
 if [ "$BINARY" -eq 1 ]; then
@@ -580,6 +587,11 @@ if [ -n "$ENDPOINT" ]; then
     keepword config set network.endpoint "$ENDPOINT"
     info "advertising $ENDPOINT"
 fi
+if [ -n "$RELAY" ]; then
+    keepword config unset network.endpoint
+    keepword config set network.relay "$RELAY"
+    info "reached through the relay $RELAY"
+fi
 if [ -n "$DOMAIN" ]; then
     # Behind our own reverse proxy the client address arrives in
     # X-Forwarded-For; observation receipts depend on it being right.
@@ -595,7 +607,7 @@ if [ "$SEEDS" -eq 0 ]; then
     keepword config set network.seeds false
     info "not joining through the default seeds"
 fi
-if [ -z "$(keepword config get network.endpoint)" ]; then
+if [ -z "$(keepword config get network.endpoint)$(keepword config get network.relay)" ]; then
     if [ -n "$PUBLIC_API" ]; then
         warn "the API listens on $PUBLIC_API, but no endpoint is advertised, so peers"
         warn "can't mirror this node and it is never assigned requests. Re-run with"

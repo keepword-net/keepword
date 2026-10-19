@@ -290,12 +290,22 @@ pub(crate) struct Schedule {
 }
 
 impl Node {
+    /// Where peers reach this node's API: `network.endpoint`, or its
+    /// address at the relay that accepted it.
+    pub fn endpoint(&self) -> Option<String> {
+        self.config.network.endpoint.clone().or_else(|| {
+            let via = self.relay.via.lock().unwrap_or_else(|p| p.into_inner());
+            via.as_ref()
+                .map(|r| join(r, &format!("/v1/relay/{}", self.key.public())))
+        })
+    }
+
     /// This node's signed descriptor for the current run.
     pub fn build_descriptor(&self) -> Result<Signed<Descriptor>> {
         Ok(Signed::sign(
             Descriptor {
                 key: self.key.public(),
-                endpoint: self.config.network.endpoint.clone(),
+                endpoint: self.endpoint(),
                 vantage: self.config.vantage(),
                 issued_at_ms: now_ms(),
                 software: concat!("keepword/", env!("CARGO_PKG_VERSION")).into(),
@@ -1472,7 +1482,8 @@ impl Node {
             }
         }
         let me = self.key.public();
-        let observation = if !authentic {
+        // Through a relay, the address is unknown: nobody is observed.
+        let observation = if !authentic || from_ip.is_unspecified() {
             None
         } else if let Some(o) = self.store.observation(&env.body.from, &me)?.filter(|o| {
             o.body.ip == from_ip && now - o.body.observed_at_ms < OBSERVATION_REFRESH_MS
@@ -1498,8 +1509,8 @@ impl Node {
         })
     }
 
-    /// Replay protection for push envelopes.
-    fn fresh_envelope(&self, id: Digest, now: i64) -> bool {
+    /// Replay protection for push envelopes and relay polls.
+    pub(crate) fn fresh_envelope(&self, id: Digest, now: i64) -> bool {
         let mut seen = self
             .seen_envelopes
             .lock()

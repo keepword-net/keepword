@@ -677,11 +677,16 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     keepword::web::scheduler(n, |line| eprintln!("{line}")).await
                 });
             }
-            if node.config.network.endpoint.is_some() || !node.config.network.peers.is_empty() {
+            let net = &node.config.network;
+            if net.endpoint.is_some() || net.relay.is_some() || !net.peers.is_empty() {
                 let n = node.clone();
                 tasks.spawn(async move {
                     keepword::daemon::federation_loop(n, |l| eprintln!("{l}")).await
                 });
+            }
+            if node.config.network.relay.is_some() {
+                let n = node.clone();
+                tasks.spawn(async move { keepword::relay::client(n, |l| eprintln!("{l}")).await });
             }
             if anchor {
                 let n = node.clone();
@@ -804,14 +809,13 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     let seed = node.epoch_seed(epoch).await;
                     let me = node.location_of(&node.key.public(), now)?;
                     println!("witness     {}", node.key.public());
-                    println!(
-                        "endpoint    {}",
-                        node.config
-                            .network
-                            .endpoint
-                            .as_deref()
-                            .unwrap_or("(none: push-only)")
-                    );
+                    let net = &node.config.network;
+                    let endpoint = match (&net.endpoint, &net.relay) {
+                        (Some(e), _) => e.clone(),
+                        (None, Some(r)) => format!("through a relay ({r})"),
+                        (None, None) => "(none: push-only)".into(),
+                    };
+                    println!("endpoint    {endpoint}");
                     println!(
                         "location    {}",
                         me.as_ref()
@@ -1063,7 +1067,8 @@ fn status_warnings(node: &Node, located: bool) -> Result<Vec<String>> {
     let cfg = &node.config;
     let mut w = Vec::new();
     let peers = node.store.peers()?;
-    if cfg.network.endpoint.is_none() && cfg.network.peers.is_empty() && peers.is_empty() {
+    let reachable = cfg.network.endpoint.is_some() || cfg.network.relay.is_some();
+    if !reachable && cfg.network.peers.is_empty() && peers.is_empty() {
         w.push(
             "federation is off: set network.endpoint (the node then joins through the default \
              seeds) and restart the service"

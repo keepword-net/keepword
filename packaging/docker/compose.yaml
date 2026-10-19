@@ -14,6 +14,7 @@ services:
       KEEPWORD_ASN: ""            # e.g. 3320
       KEEPWORD_COUNTRY: ""        # e.g. DE
       KEEPWORD_ENDPOINT: ""       # e.g. https://witness.example.org
+      KEEPWORD_RELAY: ""          # at home, instead: auto
       KEEPWORD_PEERS: ""          # e.g. https://a.example,https://b.example
       KEEPWORD_BEHIND_PROXY: "1"
 
