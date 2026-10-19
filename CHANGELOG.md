@@ -7,8 +7,28 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-19
+
+A second default seed, a normalizer that no longer raises silent-edit
+alerts for two kinds of per-request noise, a live check for more of it,
+and `verify --esplora` settling the anchor check. Formats and the protocol
+are unchanged: 2.2.0 and 2.3.0 witnesses federate and verify each other's
+bundles, all but re-running the other version's normalizer. The normalizer
+is new, though, and captures only compare when they were normalized the
+same way: until every witness runs 2.3.0, verdicts and rechecks draw on
+fewer witnesses, and a witness doesn't compare a URL's first capture after
+the upgrade with the one before. Upgrade every witness.
+
+### Added
+
+- **`scripts/noise-check.sh`** captures live pages twice and shows those
+  that normalize differently, noise the normalizer misses:
+  `sudo keepword watch list | scripts/noise-check.sh`.
+
 ### Changed
-- **New default seed**, a new default seed has been hosted at ```seed2.keepword.net```, added it to default seeds.
+
+- **`https://seed2.keepword.net` is a second default seed**, next to
+  `https://seed1.keepword.net`.
 - **Dependencies are updated to their latest versions**, among them
   reqwest 0.13, rusqlite 0.40, scraper 0.27 and ed25519-dalek 3. HTTPS
   uses aws-lc-rs instead of ring and still checks certificates against
@@ -16,9 +36,21 @@ only change incompatibly in a new major version.
   corpus.
 - **The container image is built on Debian 13 (trixie)** instead of
   Debian 12 (bookworm).
+- **Normalized text is `keepword-norm/4`**, for the two normalizer fixes
+  below. As every normalized text starts with the version, every
+  normalized hash changes.
 
 ### Fixed
 
+- **A link with a per-visit token raised a silent-edit alert on every
+  capture.** Anthropic's policies link to claude.ai through
+  `https://claude.ai/redirect/website.v1.<uuid>/…`, with a new UUID for
+  each request. Known click redirects like this one have the token
+  replaced by `<token>`. Other UUIDs in links are document IDs and stay.
+- **A page behind Cloudflare changed back and forth when only some
+  responses obfuscated its email addresses.** Addresses hidden as
+  `[email protected]` are decoded, and the obfuscated `mailto:` links
+  are dropped like the plain ones.
 - **`keepword verify --esplora` left the anchor unchecked.** The chain's
   answer went into a separate `bitcoin` line, while the `anchor` line
   stayed skipped and the summary said there was no checked anchor. The
@@ -489,6 +521,7 @@ produce evidence anyone can verify offline.
 - A private web UI with history, diffs, verdicts, alerts and the network.
 - Licensed under the GNU AGPL v3.
 
+[2.3.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.3.0
 [2.2.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.2.0
 [2.1.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.1.0
 [2.0.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.0.0

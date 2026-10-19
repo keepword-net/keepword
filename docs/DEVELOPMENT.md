@@ -45,5 +45,8 @@ Integration tests run everything over real HTTP on localhost:
 - `anchoring.rs`: drand beacons and Bitcoin anchoring against mock drand,
   OpenTimestamps and Esplora services
 - `keepword-normalize/tests/corpus.rs`: the normalizer regression corpus
+- `scripts/noise-check.sh`: not a test, it needs the internet. It captures
+  live pages twice and shows those that normalize differently, noise the
+  corpus lacks: `sudo keepword watch list | scripts/noise-check.sh`
 - `keepword-tlsn/tests/notary.rs`: a full MPC-TLS notarization between two
   witnesses against TLSNotary's test server

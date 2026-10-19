@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: https://github.com/actions/checkout@v7
       - run: command -v shellcheck || { apt-get update -qq && apt-get install -y -qq shellcheck >/dev/null; }
-      - run: shellcheck -s sh scripts/install.sh scripts/ci/installer-smoke.sh packaging/docker/entrypoint.sh
+      - run: shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh
 
   # A real systemd host: install, run, upgrade, purge. Nodes started in CI
   # never dial the default seeds: they would join the real network.

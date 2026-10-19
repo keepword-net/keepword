@@ -28,7 +28,7 @@ use scraper::{ElementRef, Html, HtmlTreeSink, Node, Selector};
 use url::Url;
 
 use crate::clock::mask_now;
-use crate::noise::{clean_image, clean_link, clean_text, is_noise_token_list};
+use crate::noise::{cf_email, clean_image, clean_link, clean_text, is_noise_token_list};
 use crate::rules::SiteRules;
 
 /// Elements whose content is never meaningful page text.
@@ -289,6 +289,12 @@ impl<'a> Walker<'a> {
         if v.attr("class").is_some_and(is_noise_token_list)
             || v.attr("id").is_some_and(is_noise_token_list)
         {
+            return None;
+        }
+        // "[email protected]", the address hidden by Cloudflare: as if
+        // served in the clear, the address without a link.
+        if let Some(email) = v.attr("data-cfemail").and_then(cf_email) {
+            self.buf.push_str(&email);
             return None;
         }
         match name {

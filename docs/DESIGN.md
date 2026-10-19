@@ -173,13 +173,13 @@ other checks. `keepword verify --bundle FILE` needs no node, key or network,
 and neither does `keepword diff --bundle A B`, which diffs two bundles'
 normalized text once both verify.
 
-## 4. Normalization (v3, implemented)
+## 4. Normalization (v4, implemented)
 
 The output is line-oriented text, one block per line, which makes it
 diffable, readable and cheap to hash:
 
 ```
-keepword-norm/3 html
+keepword-norm/4 html
 title: Minister resigns
 modified: 2024-05-01T10:00:00Z
 h1: Minister resigns
@@ -202,15 +202,20 @@ The rules:
 - **Text**: NFC, invisible characters removed, whitespace collapsed.
   Relative times ("5 minutes ago", "vor 3 Stunden", "il y a 2 jours")
   become `<reltime>`, and live counters ("1,234 views") become `<n> views`.
-  `<time datetime>` is replaced by its machine-readable value.
+  `<time datetime>` is replaced by its machine-readable value. Addresses
+  hidden by Cloudflare's email obfuscation (`[email protected]`, re-keyed
+  per response, and some responses not obfuscated at all) are decoded.
 - **Live clocks**: an absolute timestamp equal to the signed capture time
   becomes `<now>` (zoned: within 120 s; zone-less: only with seconds,
   within 90 s modulo whole hours). `fetched_at` is signed, so verifiers get
   the same result.
 - **Links**: resolved, fragment dropped, tracking parameters (`utm_*`,
-  `fbclid`, `gclid`, …) removed. A link's text leaves out the links
-  nested in it (table cells can nest them). Only HTML `<a>` elements are
-  links.
+  `fbclid`, `gclid`, …) removed. Known click redirects that carry a
+  per-visit token in the path (`claude.ai/redirect/<token>/…`) have it
+  masked; other IDs in paths are documents and stay. Cloudflare's
+  `/cdn-cgi/l/email-protection` links are `mailto:` links, dropped like
+  them. A link's text leaves out the links nested in it (table cells can
+  nest them). Only HTML `<a>` elements are links.
 - **Images**: resolved and compared *without* query string (CDN resize
   parameters and signatures live there). `data:` URIs are replaced by
   their hash.
@@ -263,9 +268,12 @@ OneTrust, GOV.UK, and a JS-rendered status page. Each has variants that
 reproduce what changes between two real requests (rotated tokens, counters,
 ad slots, consent text, cache busters, re-keyed email obfuscation, clocks),
 which must normalize identically, and edits that must be caught and
-classified as silent or disclosed. The fixtures are hand-built because this
-development environment couldn't reach live sites. Growing it from real
-captures is the most valuable next step.
+classified as silent or disclosed. The fixtures are hand-built. Capturing
+35 live privacy policies and terms twice, 90 seconds apart, found two kinds
+of noise they lacked: a click redirect's per-visit token in a link's path,
+and Cloudflare obfuscating an address in one response but not the next.
+`scripts/noise-check.sh` repeats that over a watchlist: the cheapest way
+to grow the corpus.
 
 ### Known gaps
 
