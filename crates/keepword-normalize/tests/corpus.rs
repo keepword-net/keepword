@@ -181,11 +181,11 @@ fn blog_wordpress() {
                     // Cloudflare re-keys obfuscated addresses on every request.
                     (
                         "e3908e8290a3818f8c84cd869b828e938f86cd808c8e\"><span",
-                        "5a29373b291a38363d3574223b37363f36743935\"><span",
+                        "5a29373b291a3836353d743f223b372a363f74393537\"><span",
                     ),
                     (
                         "data-cfemail=\"e3908e8290a3818f8c84cd869b828e938f86cd808c8e\"",
-                        "data-cfemail=\"5a29373b291a38363d3574223b37363f36743935\"",
+                        "data-cfemail=\"71021c100231131d1e165f1409101c011d145f121e1c\"",
                     ),
                     ("ver=6.6.1", "ver=6.6.2"),
                     ("2 days ago", "3 days ago"),
@@ -194,6 +194,25 @@ fn blog_wordpress() {
                 ],
                 later_s: 86_400,
                 expect: Expect::Same,
+            },
+            Variant {
+                // Some responses come without the obfuscation.
+                name: "address in the clear",
+                replace: &[(
+                    "<a href=\"/cdn-cgi/l/email-protection#e3908e8290a3818f8c84cd869b828e938f86cd808c8e\"><span class=\"__cf_email__\" data-cfemail=\"e3908e8290a3818f8c84cd869b828e938f86cd808c8e\">[email&#160;protected]</span></a>",
+                    "<a href=\"mailto:smas@blog.example.com\">smas@blog.example.com</a>",
+                )],
+                later_s: 3600,
+                expect: Expect::Same,
+            },
+            Variant {
+                name: "address changed",
+                replace: &[(
+                    "data-cfemail=\"e3908e8290a3818f8c84cd869b828e938f86cd808c8e\"",
+                    "data-cfemail=\"2c40494b4d406c4e40434b0249544d415c4049024f4341\"",
+                )],
+                later_s: 86_400,
+                expect: Expect::Silent,
             },
             Variant {
                 name: "cost figure changed",

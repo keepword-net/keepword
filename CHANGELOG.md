@@ -16,8 +16,23 @@ only change incompatibly in a new major version.
   corpus.
 - **The container image is built on Debian 13 (trixie)** instead of
   Debian 12 (bookworm).
+- **Normalized text is `keepword-norm/4`**, for the two fixes below to
+  the normalizer. Captures only compare when they were normalized the
+  same way: until every witness upgrades, verdicts and rechecks draw on
+  fewer witnesses, and a witness doesn't compare a URL's first capture
+  after the upgrade with the one before. Upgrade every witness.
 
 ### Fixed
+
+- **A link with a per-visit token raised a silent-edit alert on every
+  capture.** Anthropic's policies link to claude.ai through
+  `https://claude.ai/redirect/website.v1.<uuid>/…`, with a new UUID for
+  each request. Known click redirects like this one have the token
+  replaced by `<token>`. Other UUIDs in links are document IDs and stay.
+- **A page behind Cloudflare changed back and forth when only some
+  responses obfuscated its email addresses.** Addresses hidden as
+  `[email protected]` are decoded, and the obfuscated `mailto:` links
+  are dropped like the plain ones.
 
 - **`keepword verify --esplora` left the anchor unchecked.** The chain's
   answer went into a separate `bitcoin` line, while the `anchor` line

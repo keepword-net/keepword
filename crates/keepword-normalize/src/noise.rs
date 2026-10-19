@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 use unicode_normalization::UnicodeNormalization;
-use url::Url;
+use url::{Position, Url};
 
 static RELTIME: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
@@ -102,11 +102,41 @@ fn is_tracking(k: &str) -> bool {
     k.starts_with("utm_") || k.starts_with("pk_") || TRACKING_PARAMS.contains(&k.as_str())
 }
 
+/// Click redirects whose path segment after a prefix is a token that
+/// changes on every visit (`https://claude.ai/redirect/website.v1.<uuid>/new`).
+const TOKEN_PATHS: &[(&str, &str)] = &[("claude.ai", "/redirect/")];
+
+/// The link with a click redirect's per-visit token replaced by `<token>`.
+fn mask_token(u: Url) -> String {
+    for (host, prefix) in TOKEN_PATHS {
+        if u.host_str() != Some(host) {
+            continue;
+        }
+        let Some(rest) = u.path().strip_prefix(prefix) else {
+            continue;
+        };
+        let tail = rest.find('/').map_or("", |i| &rest[i..]);
+        if tail.len() < rest.len() {
+            return format!(
+                "{}{prefix}<token>{tail}{}",
+                &u[..Position::BeforePath],
+                &u[Position::AfterPath..]
+            );
+        }
+    }
+    u.into()
+}
+
 /// Resolve a link against the page URL, drop the fragment and tracking
-/// parameters. Returns `None` for non-web links (javascript:, mailto:, ...).
+/// parameters, and mask click redirects' per-visit tokens. Returns `None`
+/// for non-web links (javascript:, mailto:, ...).
 pub fn clean_link(base: &Url, href: &str) -> Option<String> {
     let mut u = base.join(href.trim()).ok()?;
     if u.scheme() != "http" && u.scheme() != "https" {
+        return None;
+    }
+    // A mailto: link, behind Cloudflare's email obfuscation.
+    if u.path() == "/cdn-cgi/l/email-protection" {
         return None;
     }
     u.set_fragment(None);
@@ -122,7 +152,23 @@ pub fn clean_link(base: &Url, href: &str) -> Option<String> {
             u.query_pairs_mut().clear().extend_pairs(kept);
         }
     }
-    Some(u.into())
+    Some(mask_token(u))
+}
+
+/// An address hidden by Cloudflare's email obfuscation, which serves it as
+/// hex bytes XOR'd with the first, a key it picks per response, and
+/// sometimes serves it in the clear instead.
+pub fn cf_email(hex: &str) -> Option<String> {
+    if hex.len() < 4 || !hex.len().is_multiple_of(2) || !hex.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex digits"))
+        .collect();
+    let (key, rest) = bytes.split_first()?;
+    String::from_utf8(rest.iter().map(|b| b ^ key).collect()).ok()
 }
 
 /// Image sources are compared without their query string: CDNs put resize
@@ -266,6 +312,39 @@ mod tests {
             clean_image(&base, "/i.png?w=300&sig=abc").unwrap(),
             "https://example.com/i.png"
         );
+        assert!(clean_link(&base, "/cdn-cgi/l/email-protection#e3908e82").is_none());
+    }
+
+    #[test]
+    fn click_redirect_tokens() {
+        let base = Url::parse("https://www.anthropic.com/legal/privacy").unwrap();
+        let link = |href: &str| clean_link(&base, href).unwrap();
+        let r = "https://claude.ai/redirect/website.v1.2f2d10e1-5543-4542-a97f-e0667cb4b77e";
+        assert_eq!(
+            link(&format!("{r}/settings/connectors?utm_source=x&tab=1")),
+            "https://claude.ai/redirect/<token>/settings/connectors?tab=1"
+        );
+        assert_eq!(link(r), "https://claude.ai/redirect/<token>");
+        // Document IDs elsewhere stay: a link retargeted to another is news.
+        for href in [
+            "https://claude.ai/redirect/",
+            "https://claude.ai/settings/2f2d10e1-5543-4542-a97f-e0667cb4b77e",
+            "https://www.anthropic.com/legal/archive/21d66aa9-68f6-4356-ba01-2825b0f81805",
+            "https://example.com/redirect/2f2d10e1-5543-4542-a97f-e0667cb4b77e/x",
+        ] {
+            assert_eq!(link(href), href);
+        }
+    }
+
+    #[test]
+    fn cloudflare_emails() {
+        assert_eq!(
+            cf_email("80ece1f4e1ede4f0efc0f0e1f9f0e1ecaee3efed").as_deref(),
+            Some("latamdpo@paypal.com")
+        );
+        for bad in ["", "80", "80e", "80zz", "+0ec", "00ff"] {
+            assert_eq!(cf_email(bad), None, "{bad}");
+        }
     }
 
     #[test]
