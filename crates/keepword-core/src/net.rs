@@ -239,6 +239,15 @@ impl AlertKind {
             AlertKind::Equivocation => 3,
         }
     }
+
+    /// The kind, for people.
+    pub fn label(self) -> &'static str {
+        match self {
+            AlertKind::Split => "split",
+            AlertKind::SilentEdit => "silent edit",
+            AlertKind::Equivocation => "equivocation",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
