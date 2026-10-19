@@ -2,10 +2,12 @@ name: Release
 
 # Push a tag like v1.0.0 to build static Linux binaries, publish a Forgejo
 # release with them, their checksums and the changelog entry, then publish
-# the crates to crates.io.
+# the crates to crates.io. Run by hand, it only builds: to try a change to
+# the runner image without releasing.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -22,14 +24,16 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - name: Check the tag matches the crate version
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           version=$(cargo pkgid -p keepword | sed 's/.*[#@]//')
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != version $version"; exit 1; }
       - name: Install the target, zig and cargo-zigbuild
         run: |
           rustup target add ${{ matrix.target }}
+          command -v zig >/dev/null && command -v cargo-zigbuild >/dev/null && exit 0
           python3 -m venv /tmp/zig || { apt-get update -qq && apt-get install -y -qq python3-venv >/dev/null && python3 -m venv /tmp/zig; }
-          /tmp/zig/bin/pip install ziglang==0.13.0 cargo-zigbuild
+          /tmp/zig/bin/pip install ziglang cargo-zigbuild
           echo /tmp/zig/bin >> "$GITHUB_PATH"
       - name: Build
         run: cargo zigbuild --release --locked -p keepword --target ${{ matrix.target }}
@@ -47,6 +51,7 @@ jobs:
 
   release:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: debian
     steps:
       - uses: actions/checkout@v7
@@ -101,6 +106,7 @@ jobs:
   # CARGO_REGISTRY_TOKEN secret, a crates.io token with publish-update scope.
   crates:
     needs: release
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: rust
     steps:
       - uses: actions/checkout@v7
