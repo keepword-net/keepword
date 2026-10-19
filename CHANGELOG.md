@@ -13,6 +13,9 @@ only change incompatibly in a new major version.
   the installer advertises `http://<public IP>:<port>`. Before, it
   advertised nothing, so the witness was never assigned requests. Peers
   always accepted plain HTTP: everything they fetch is signed.
+- **Building needs Rust 1.95**, as the TLSNotary tier already did (was
+  1.90). The installer used a system Rust from 1.85 on, which then failed
+  to build; it now uses one from 1.95 on and otherwise installs stable.
 
 ## [2.3.0] - 2026-10-19
 

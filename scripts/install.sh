@@ -32,8 +32,7 @@ API_ADDR="127.0.0.1:8481"
 NOTARY_ADDR="0.0.0.0:8482"
 DOCS="https://git.keepword.net/keepword/keepword/src/branch/main/docs"
 ASN_DB_URL="https://iptoasn.com/data/ip2asn-combined.tsv.gz"
-MIN_RUST="1.85"
-NOTARY_MIN_RUST="1.95"
+MIN_RUST="1.95"
 
 SOURCE=""
 BINARY=0
@@ -409,12 +408,10 @@ else
     }
 
     step "Preparing the Rust toolchain"
-    need_rust=$MIN_RUST
-    [ "$NOTARY" -eq 0 ] || need_rust=$NOTARY_MIN_RUST
     CARGO=""
     if command -v cargo >/dev/null 2>&1; then
         have=$(rustc --version 2>/dev/null | awk '{print $2}')
-        if [ -n "$have" ] && version_ge "$have" "$need_rust"; then
+        if [ -n "$have" ] && version_ge "$have" "$MIN_RUST"; then
             CARGO=$(command -v cargo)
             info "using system Rust $have"
         fi
@@ -439,7 +436,7 @@ else
         fi
         CARGO="$CARGO_HOME/bin/cargo"
         have=$("$CARGO_HOME/bin/rustc" --version | awk '{print $2}')
-        version_ge "$have" "$need_rust" || die "Rust $have is older than the required $need_rust"
+        version_ge "$have" "$MIN_RUST" || die "Rust $have is older than the required $MIN_RUST"
         info "using Rust $have"
     fi
 
