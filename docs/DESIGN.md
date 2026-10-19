@@ -272,7 +272,8 @@ classified as silent or disclosed. The fixtures are hand-built. Capturing
 35 live privacy policies and terms twice, 90 seconds apart, found two kinds
 of noise they lacked: a click redirect's per-visit token in a link's path,
 and Cloudflare obfuscating an address in one response but not the next.
-Repeating that over the watchlist is the cheapest way to grow the corpus.
+`scripts/noise-check.sh` repeats that over a watchlist: the cheapest way
+to grow the corpus.
 
 ### Known gaps
 
