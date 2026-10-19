@@ -1920,6 +1920,7 @@ version = "2.3.1-dev"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.23.1",
  "clap",
  "futures",
  "hex",
@@ -1935,6 +1936,7 @@ dependencies = [
  "time",
  "tokio",
  "toml",
+ "tower",
  "url",
 ]
 

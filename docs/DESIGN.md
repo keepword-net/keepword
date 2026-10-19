@@ -691,6 +691,33 @@ verifier, it must then have lied consistently to every auditor, and any two
 conflicting heads prove it. A capture is covered from the first checkpoint
 after it, so within about an hour.
 
+### 6.9 Relays
+
+A witness at home, behind NAT, can't accept connections, so peers couldn't
+audit its log or fetch its captures. With `network.relay` it advertises
+`<relay>/v1/relay/<key>` as its endpoint and keeps a few polls open to that
+witness over its own connection. The relay queues the requests peers send
+to that address, hands each to the next poll, and returns the answer that
+comes with the poll after it. The witness answers with its own API, in
+process. Polls are signed (`keepword/relay-poll/v1`) and name the relay,
+so no one else takes a witness's requests.
+
+A relay stores nothing and can't forge: everything peers fetch is signed by
+the witness, as it would be served directly. It can only withhold, which
+looks like the witness being offline. Requests through it carry no client
+address, so the witness observes nobody through it; peers still observe
+the witness, because its own pushes reach them directly, and place it in
+its home network. To other nodes it is a witness with an endpoint: only
+the witness and its relay need to support relaying.
+
+Every witness that accepts connections relays, for up to
+`network.relay_witnesses` others (8), at most 2 per address so keys one
+person makes up can't fill it, each while it keeps polling. With
+`network.relay = "auto"` a witness tries the ones it knows, in an order of
+its own so witnesses spread over them and each returns to the same one;
+the first that takes it answers at once, and its new endpoint reaches
+peers in its next descriptor, which it pushes to them itself.
+
 ## 7. Storage, retention and law
 
 Not legal advice, and German law in particular deserves a lawyer's review

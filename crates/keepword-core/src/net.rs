@@ -296,6 +296,27 @@ impl Statement for PushEnvelope {
     }
 }
 
+/// Authenticates a witness that can't accept connections asking its relay
+/// for the requests peers sent it: `witness` polls `relay` at `sent_at`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelayPoll {
+    pub witness: WitnessKey,
+    pub relay: WitnessKey,
+    pub sent_at_ms: i64,
+}
+
+impl Statement for RelayPoll {
+    const DOMAIN: &'static str = "keepword/relay-poll/v1";
+    fn encode(&self, e: &mut Encoder) {
+        e.fixed(&self.witness.0)
+            .fixed(&self.relay.0)
+            .i64(self.sent_at_ms);
+    }
+    fn signer(&self) -> WitnessKey {
+        self.witness
+    }
+}
+
 /// The envelope's `payload`: a hash over the pushed messages' IDs.
 pub fn payload_digest(messages: &[Gossip]) -> Digest {
     let ids: Vec<Digest> = messages.iter().map(Gossip::id).collect();

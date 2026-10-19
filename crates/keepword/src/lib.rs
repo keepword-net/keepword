@@ -10,6 +10,7 @@ pub mod daemon;
 pub mod federation;
 pub mod httpc;
 pub mod recheck;
+pub mod relay;
 pub mod sysdir;
 pub mod vantage;
 pub mod web;
@@ -48,6 +49,8 @@ pub struct Node {
     sched: Mutex<federation::Schedule>,
     /// What others may still make this node store and check this hour.
     limits: Mutex<federation::Limits>,
+    /// Witnesses this node relays for.
+    relay: relay::Relay,
 }
 
 /// Result of one capture.
@@ -122,6 +125,7 @@ impl Node {
             seen_envelopes: Mutex::new(HashMap::new()),
             sched: Mutex::new(Default::default()),
             limits: Mutex::new(Default::default()),
+            relay: Default::default(),
         };
         node.descriptor = Mutex::new(node.build_descriptor()?);
         Ok(node)

@@ -220,9 +220,11 @@ This installs the latest release's static binary, creates a sandboxed
 refreshes it weekly, detects the node's network, and puts the peer API behind
 Caddy with automatic TLS. No domain? Pass `--public-api 0.0.0.0:8481`
 instead of `--domain` and `--caddy`, and open port 8481: the node is then
-reached at `http://<its IP>:8481`. Re-run it to upgrade. To build from
-source instead (needed for `--render` and `--notary`), drop `--binary`, or
-run the installer from a checkout:
+reached at `http://<its IP>:8481`. At home, behind a router? Pass
+`--relay auto` instead: it is reached through a witness that relays for
+it. Re-run it to upgrade. To build from source instead (needed for
+`--render` and `--notary`), drop `--binary`, or run the installer from a
+checkout:
 
 ```sh
 git clone https://git.keepword.net/keepword/keepword.git && cd keepword

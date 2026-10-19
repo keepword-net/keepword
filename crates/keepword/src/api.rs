@@ -13,15 +13,15 @@ use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use keepword_core::net::Descriptor;
 use keepword_core::statement::Signed;
 use keepword_core::{Digest, SignedAttestation, now_ms};
 
-use crate::Node;
 use crate::config::NetworkConfig;
 use crate::federation::{GossipPage, IdList, PushRequest};
+use crate::{Node, relay};
 
 pub fn router(node: Arc<Node>) -> Router {
     let limiter = Arc::new(RateLimiter::new(
@@ -44,6 +44,12 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/v1/bundle/{id}", get(bundle))
         .route("/v1/blob/{hash}", get(blob))
         .route("/v1/gossip", get(gossip_pull).post(gossip_push))
+        // A poll carries an answer of up to 8 MiB, in base64.
+        .route(
+            "/v1/relay/{key}",
+            post(relay::poll).layer(DefaultBodyLimit::max(12 * 1024 * 1024)),
+        )
+        .route("/v1/relay/{key}/{*path}", any(relay::forward))
         .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(
             (node.clone(), limiter),
@@ -76,13 +82,7 @@ impl RateLimiter {
         }
         let cap = self.per_minute as f64;
         let rate = cap / 60.0;
-        let key = match ip {
-            IpAddr::V6(v6) => {
-                let s = v6.segments();
-                IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
-            }
-            v4 => v4,
-        };
+        let key = client_net(ip);
         let mut b = self.buckets.lock().unwrap_or_else(|p| p.into_inner());
         if b.len() >= MAX_BUCKETS && !b.contains_key(&key) {
             b.retain(|_, (tokens, t)| {
@@ -126,7 +126,7 @@ async fn rate_limit(
     }
 }
 
-struct ApiError(StatusCode, String);
+pub(crate) struct ApiError(pub(crate) StatusCode, pub(crate) String);
 
 impl<E: std::fmt::Display> From<E> for ApiError {
     fn from(e: E) -> Self {
@@ -140,13 +140,13 @@ impl IntoResponse for ApiError {
     }
 }
 
-type ApiResult<T> = Result<Json<T>, ApiError>;
+pub(crate) type ApiResult<T> = Result<Json<T>, ApiError>;
 
 fn bad(msg: &str) -> ApiError {
     ApiError(StatusCode::BAD_REQUEST, msg.into())
 }
 
-fn not_found() -> ApiError {
+pub(crate) fn not_found() -> ApiError {
     ApiError(StatusCode::NOT_FOUND, "not found".into())
 }
 
@@ -347,13 +347,24 @@ async fn gossip_pull(
     }))
 }
 
+/// The network that stands for one client: its address, or its IPv6 /64.
+pub(crate) fn client_net(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
+        }
+        v4 => v4,
+    }
+}
+
 /// Where a request came from. Behind a reverse proxy that is what the
 /// proxy says: the address it appended to X-Forwarded-For, or the header
 /// named by `network.client_ip_header`. But only if the connection came
 /// from the proxy: from anywhere else, say a published container port, the
 /// headers are whatever the client wrote, and observation receipts (where
 /// a peer connects from, which places it) must not be forgeable.
-fn client_ip(net: &NetworkConfig, addr: IpAddr, headers: &HeaderMap) -> IpAddr {
+pub(crate) fn client_ip(net: &NetworkConfig, addr: IpAddr, headers: &HeaderMap) -> IpAddr {
     let addr = addr.to_canonical();
     if !net.trust_forwarded_for || keepword_capture::netpolicy::is_public(addr) {
         return addr;
