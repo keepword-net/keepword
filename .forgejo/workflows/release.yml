@@ -17,7 +17,7 @@ jobs:
       matrix:
         target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
     steps:
-      - uses: https://github.com/actions/checkout@v7
+      - uses: actions/checkout@v7
       - uses: https://github.com/dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -42,7 +42,7 @@ jobs:
           cp target/${{ matrix.target }}/release/keepword "dist/$name/"
           cp LICENSE README.md CHANGELOG.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
-      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+      - uses: forgejo/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: dist/*.tar.gz
@@ -51,8 +51,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: https://github.com/actions/checkout@v7
-      - uses: https://data.forgejo.org/forgejo/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: forgejo/download-artifact@v4
         with:
           path: dist
           merge-multiple: true

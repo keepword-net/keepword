@@ -30,7 +30,7 @@ jobs:
   shellcheck:
     runs-on: debian
     steps:
-      - uses: https://github.com/actions/checkout@v7
+      - uses: actions/checkout@v7
       - run: command -v shellcheck || { apt-get update -qq && apt-get install -y -qq shellcheck >/dev/null; }
       - run: shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh
 
@@ -40,7 +40,7 @@ jobs:
   systemd:
     runs-on: host
     steps:
-      - uses: https://github.com/actions/checkout@v7
+      - uses: actions/checkout@v7
       - name: Clean up earlier runs
         run: |
           docker rm -f keepword-ci 2>/dev/null || true
@@ -106,7 +106,7 @@ jobs:
             init: openrc
             mode: binary
     steps:
-      - uses: https://github.com/actions/checkout@v7
+      - uses: actions/checkout@v7
       - name: Prepare ${{ matrix.os }}
         run: ${{ matrix.prep }}
       - name: Installer smoke test
@@ -115,7 +115,7 @@ jobs:
   docker:
     runs-on: host
     steps:
-      - uses: https://github.com/actions/checkout@v7
+      - uses: actions/checkout@v7
       - run: docker build -t keepword .
       - name: Container starts and configures itself
         run: |
