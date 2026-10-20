@@ -127,6 +127,12 @@ impl Node {
             limits: Mutex::new(Default::default()),
             relay: Default::default(),
         };
+        // Behind a relay, witnesses are where the relay last placed them.
+        if node.config.network.relay.is_some()
+            && let Some(s) = relay::Saved::load(dir)
+        {
+            node.relay.set_view(s.candidates);
+        }
         node.descriptor = Mutex::new(node.build_descriptor()?);
         Ok(node)
     }
@@ -384,6 +390,25 @@ impl Node {
             1 => Ok(matches.remove(0)),
             _ => bail!("ID prefix {reference} is ambiguous"),
         }
+    }
+
+    /// A URL's latest capture and, before it, the last that differs, made
+    /// and normalized the same way: across a normalizer upgrade or a change
+    /// of site rules, every capture differs whatever the page said.
+    pub fn latest_change(&self, url: &Url) -> Result<(Record, Record)> {
+        let mut hist = self.store.history(url.as_str())?;
+        let latest = hist.pop().context("no captures")?;
+        let l = &latest.signed.attestation;
+        let prev = hist
+            .into_iter()
+            .rev()
+            .find(|r| {
+                let a = &r.signed.attestation;
+                keepword_core::quorum::comparable(a, l)
+                    && a.comparison_hash() != l.comparison_hash()
+            })
+            .context("only one version captured")?;
+        Ok((prev, latest))
     }
 
     /// Build a bundle proving a record's inclusion in the current log.

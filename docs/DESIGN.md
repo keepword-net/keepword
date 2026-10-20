@@ -716,8 +716,10 @@ Observing nobody, it can't place other witnesses, which takes a node's
 own receipts (§6.3), nor confirm its own location. Without places it
 would compute no assignments and never take its share of requests. So it
 places witnesses where its relay does, from the relay's
-`/v1/candidates` (networks and countries, no addresses) each round. That
-only steers its own work, which a relay could stop anyway by withholding.
+`/v1/candidates` (networks and countries, no addresses) each round, and
+saves them (`relay.json`) for commands run beside it and its next start.
+That only steers its own work, which a relay could stop anyway by
+withholding.
 Witnesses at home add vantage points and capacity; only witnesses that
 accept connections observe, place others and relay.
 

@@ -9,6 +9,7 @@ use keepword::config::{Config, ContentConfig, Retain, VantageConfig};
 use keepword::{Node, Outcome, method_name, parse_time};
 use keepword_core::bundle::{Bundle, Report, Status};
 use keepword_core::net::{Alert, AlertKind};
+use keepword_core::quorum::comparable;
 use keepword_core::{format_ms, merkle, now_ms, target};
 use keepword_normalize::diff::{self, OpTag};
 
@@ -537,12 +538,15 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                 println!("no captures of {url}");
             }
             // Versions are counted per capture method; `*` marks a change.
+            // Captures normalized differently, before an upgrade, differ
+            // whatever the page said, so they aren't compared.
             let mut last = std::collections::HashMap::new();
             let mut versions = std::collections::HashMap::new();
             for r in &hist {
                 let a = &r.signed.attestation;
-                let hash = a.comparison_hash();
-                let changed = last.insert(a.method, hash).is_some_and(|prev| prev != hash);
+                let changed = last.insert(a.method, a).is_some_and(|p| {
+                    comparable(p, a) && p.comparison_hash() != a.comparison_hash()
+                });
                 let version = versions.entry(a.method).or_insert(0);
                 if changed || *version == 0 {
                     *version += 1;
@@ -582,11 +586,6 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                         Ok((b.attestation, text))
                     };
                     let ((sa, ta), (sb, tb)) = (side(&paths[0])?, side(&paths[1])?);
-                    if !keepword_core::quorum::comparable(&sa.attestation, &sb.attestation) {
-                        eprintln!(
-                            "warning: the bundles were captured or normalized differently; the diff shows that too"
-                        );
-                    }
                     ((sa.id(), sa.attestation, ta), (sb.id(), sb.attestation, tb))
                 }
                 None => {
@@ -597,19 +596,7 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                         None => {
                             let url = target::canonical_url(&a)
                                 .context("with one argument, give a URL")?;
-                            let hist = node.store.history(url.as_str())?;
-                            let latest = hist.last().context("no captures")?.clone();
-                            let prev = hist
-                                .iter()
-                                .rev()
-                                .find(|r| {
-                                    r.signed.attestation.method == latest.signed.attestation.method
-                                        && r.signed.attestation.comparison_hash()
-                                            != latest.signed.attestation.comparison_hash()
-                                })
-                                .context("only one version captured")?
-                                .clone();
-                            (prev, latest)
+                            node.latest_change(&url)?
                         }
                     };
                     let (Some(ta), Some(tb)) = (
@@ -624,6 +611,11 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     )
                 }
             };
+            if !comparable(&aa, &ab) {
+                eprintln!(
+                    "warning: the captures were made or normalized differently; the diff shows that too"
+                );
+            }
             match diff::diff(&ta, &tb) {
                 None => println!("no difference"),
                 Some(c) if cli.json => print_json(&c)?,
@@ -901,7 +893,10 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     let net = &node.config.network;
                     let endpoint = match (&net.endpoint, &net.relay) {
                         (Some(e), _) => e.clone(),
-                        (None, Some(r)) => format!("through a relay ({r})"),
+                        (None, Some(r)) => match keepword::relay::Saved::load(&node.dir) {
+                            Some(s) => format!("through the relay {}", s.relay),
+                            None => format!("through a relay ({r})"),
+                        },
                         (None, None) => "(none: push-only)".into(),
                     };
                     println!("endpoint    {endpoint}");

@@ -895,12 +895,13 @@ impl Node {
             .unwrap_or_else(|p| p.into_inner())
             .clone();
         if let Some(relay) = via
-            && let Ok(view) = (self.net)
+            && let Ok(candidates) = (self.net)
                 .get_json::<Vec<Candidate>>(&join(&relay, "/v1/candidates"))
                 .await
         {
-            *self.relay.view.lock().unwrap_or_else(|p| p.into_inner()) =
-                view.into_iter().map(|c| (c.key, c)).collect();
+            let saved = crate::relay::Saved { relay, candidates };
+            note(&mut report, "relay", saved.save(&self.dir));
+            self.relay.set_view(saved.candidates);
         }
         // Only checkpoints travel, and gossip deduplicates them, so this is
         // one message per interval however often the node syncs.

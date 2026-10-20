@@ -102,6 +102,37 @@ impl Relay {
     fn slots(&self) -> std::sync::MutexGuard<'_, HashMap<WitnessKey, Slot>> {
         self.slots.lock().unwrap_or_else(|p| p.into_inner())
     }
+
+    /// Place witnesses where the relay does.
+    pub(crate) fn set_view(&self, candidates: Vec<Candidate>) {
+        *self.view.lock().unwrap_or_else(|p| p.into_inner()) =
+            candidates.into_iter().map(|c| (c.key, c)).collect();
+    }
+}
+
+/// The relay a witness was last reached through and where it placed
+/// witnesses, saved each sync: commands run beside the service can't ask
+/// the relay, and the service starting again places witnesses at once.
+#[derive(Serialize, Deserialize)]
+pub struct Saved {
+    pub relay: String,
+    pub candidates: Vec<Candidate>,
+}
+
+const SAVED: &str = "relay.json";
+
+impl Saved {
+    pub fn load(dir: &std::path::Path) -> Option<Saved> {
+        serde_json::from_slice(&std::fs::read(dir.join(SAVED)).ok()?).ok()
+    }
+
+    pub(crate) fn save(&self, dir: &std::path::Path) -> anyhow::Result<()> {
+        // Replaced whole, so a command never reads half of it.
+        let tmp = dir.join(format!("{SAVED}.tmp"));
+        std::fs::write(&tmp, serde_json::to_vec(self)?)?;
+        std::fs::rename(tmp, dir.join(SAVED))?;
+        Ok(())
+    }
 }
 
 impl Slot {

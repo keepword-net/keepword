@@ -199,11 +199,35 @@ async fn capture_detect_verify_purge() {
     // The whole store audits clean.
     assert!(node.audit().unwrap().ok());
 
+    // A notarized capture keeps the TLS transcript, the whole response.
+    let transcript = node
+        .store
+        .blobs
+        .put(b"HTTP/1.1 200 OK\r\n\r\nWe may share your data.")
+        .unwrap();
+    let notary = keepword_core::Keypair::generate().unwrap();
+    let receipt = keepword_core::statement::Signed::sign(
+        keepword_core::net::TlsnReceipt {
+            prover: node.key.public(),
+            server_name: "127.0.0.1".into(),
+            sent_hash: keepword_core::Digest::of(b"GET /page"),
+            received_hash: transcript,
+            received_len: 42,
+            verified_at_ms: now_ms(),
+            verifier: notary.public(),
+        },
+        &notary,
+    )
+    .unwrap();
+    node.store.tlsn_insert(&third.record.id, &receipt).unwrap();
+
     // Erasure: content and records go, the log and other proofs stay valid.
     let root_before = node.store.latest_tree_head().unwrap().unwrap().head.root;
     let (blobs, rows) = node.store.purge(&url, true).unwrap();
     assert!(blobs > 0);
     assert_eq!(rows, 4);
+    assert!(!node.store.blobs.has(&transcript), "transcript kept");
+    assert!(node.store.tlsn_for(&third.record.id).unwrap().is_none());
     assert_eq!(
         node.store.latest_tree_head().unwrap().unwrap().head.root,
         root_before
@@ -213,6 +237,37 @@ async fn capture_detect_verify_purge() {
     assert!(Node::verify_bundle(&still).ok());
     // The earlier bundle (exported before erasure) still verifies too.
     assert!(Node::verify_bundle(&bundle).ok());
+}
+
+/// After a normalizer upgrade or a change of site rules, every capture is
+/// normalized differently from the ones before: the latest change is only
+/// looked for among captures normalized the same way.
+#[tokio::test]
+async fn renormalized_captures_are_no_change() {
+    let body = Arc::new(Mutex::new(PAGE.to_string()));
+    let base = serve(body.clone()).await;
+    let url = format!("{base}/page");
+    let parsed = url::Url::parse(&url).unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let node = node(tmp.path(), true);
+    node.capture(&url, false).await.unwrap();
+
+    let mut cfg = Config::load(tmp.path()).unwrap();
+    cfg.rules.push(keepword_normalize::SiteRules {
+        host: "127.0.0.1".into(),
+        remove: vec!["h1".into()],
+        root: None,
+    });
+    cfg.save(tmp.path()).unwrap();
+    let node = Node::open(tmp.path()).unwrap();
+    let same = node.capture(&url, false).await.unwrap();
+    assert!(!same.compared && same.change.is_none());
+    assert!(node.latest_change(&parsed).is_err(), "no edit to show");
+
+    *body.lock().unwrap() = PAGE.replace("never sell", "may share");
+    let edited = node.capture(&url, false).await.unwrap();
+    let (from, to) = node.latest_change(&parsed).unwrap();
+    assert_eq!((from.id, to.id), (same.record.id, edited.record.id));
 }
 
 #[tokio::test]

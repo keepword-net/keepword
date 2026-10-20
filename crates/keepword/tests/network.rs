@@ -931,6 +931,10 @@ async fn witness_behind_a_relay() {
     // so it knows which requests are its own; and its captures count.
     let now = keepword_core::now_ms();
     assert_eq!(nodes[3].node.candidates(now).unwrap().len(), 4);
+    // So do commands run beside it, which can't ask the relay.
+    let beside = Node::open(&nodes[3].node.dir).unwrap();
+    assert_eq!(beside.candidates(now).unwrap().len(), 4);
+    assert!(beside.location_of(&home_key, now).unwrap().is_some());
     let requested = format!("{site}/page/watched");
     nodes[1]
         .node
