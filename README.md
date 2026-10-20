@@ -126,7 +126,7 @@ Every check says exactly what it proves, and what it doesn't.
   proves what they said without asking anyone to trust one organization.
 - **Not a lie detector.** It proves what a page *said* and *when*, not
   whether it was *true*.
-- **Not finished.** Version 1.0 works end to end, and the network is just
+- **Not finished.** It works end to end, and the network is just
   starting. Using it currently means running a small server and typing a
   few commands; friendlier ways in are on the way.
 
