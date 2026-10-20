@@ -173,9 +173,10 @@ pub(crate) async fn poll(
         slot.polled = Instant::now();
         slot.next.clone()
     };
-    let mut next = next.lock().await;
+    // Waiting behind the witness's other polls counts too: each must return
+    // before the witness gives up on it.
     Ok(Json(
-        tokio::time::timeout(POLL_WAIT, next.recv())
+        tokio::time::timeout(POLL_WAIT, async { next.lock().await.recv().await })
             .await
             .ok()
             .flatten(),

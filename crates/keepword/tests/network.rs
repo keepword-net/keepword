@@ -2,8 +2,8 @@
 //! HTTP on localhost.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use keepword::Node;
@@ -982,4 +982,42 @@ async fn witness_behind_a_relay() {
         .await
         .unwrap();
     assert_eq!(r.status().as_u16(), 403);
+}
+
+/// A witness behind a relay stays reachable while nobody asks it anything:
+/// its idle polls, queued at the relay, each return before it gives up on
+/// them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn idle_witness_keeps_its_relay() {
+    let relay = spawn(64501, "DE", "witness-a", vec![]).await;
+    let home = spawn_with(
+        64504,
+        "US",
+        "witness-home",
+        vec![relay.endpoint.clone()],
+        |c| {
+            c.network.endpoint = None;
+            c.network.relay = Some("auto".into());
+        },
+    )
+    .await;
+    let errors = Arc::new(Mutex::new(Vec::new()));
+    let e = errors.clone();
+    tokio::spawn(keepword::relay::client(home.node.clone(), move |l| {
+        if l.starts_with("relay ") {
+            e.lock().unwrap().push(l);
+        }
+    }));
+    // Longer than a witness waits for an answer (20 s).
+    tokio::time::sleep(Duration::from_secs(25)).await;
+    assert!(
+        errors.lock().unwrap().is_empty(),
+        "{:?}",
+        errors.lock().unwrap()
+    );
+    let relayed = home.node.endpoint().expect("taken by a relay");
+    let r = reqwest::get(format!("{relayed}/v1/descriptor"))
+        .await
+        .unwrap();
+    assert!(r.status().is_success());
 }
