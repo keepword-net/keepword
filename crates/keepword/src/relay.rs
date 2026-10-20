@@ -24,6 +24,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
+use keepword_core::assign::Candidate;
 use keepword_core::net::{Descriptor, RelayPoll};
 use keepword_core::statement::Signed;
 use keepword_core::{Digest, WitnessKey, now_ms};
@@ -83,6 +84,9 @@ pub(crate) struct Relay {
     slots: Mutex<HashMap<WitnessKey, Slot>>,
     ids: AtomicU64,
     pub(crate) via: Mutex<Option<String>>,
+    /// Where the relay places witnesses: through it, this node observes
+    /// nobody itself.
+    pub(crate) view: Mutex<HashMap<WitnessKey, Candidate>>,
 }
 
 struct Slot {

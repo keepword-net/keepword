@@ -15,6 +15,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
+use keepword_core::assign::Candidate;
 use keepword_core::net::Descriptor;
 use keepword_core::statement::Signed;
 use keepword_core::{Digest, SignedAttestation, now_ms};
@@ -30,6 +31,7 @@ pub fn router(node: Arc<Node>) -> Router {
     Router::new()
         .route("/v1/descriptor", get(descriptor))
         .route("/v1/peers", get(peers))
+        .route("/v1/candidates", get(candidates))
         .route("/v1/log/head", get(head))
         .route("/v1/log/checkpoint", get(checkpoint))
         .route("/v1/log/leaves", get(leaves))
@@ -156,6 +158,12 @@ fn parse_id(s: &str) -> Result<Digest, ApiError> {
 
 async fn descriptor(State(node): State<Arc<Node>>) -> Json<Signed<Descriptor>> {
     Json(node.descriptor())
+}
+
+/// The witnesses this node can assign and where it places them: networks
+/// and countries, no addresses. A witness behind a relay uses its relay's.
+async fn candidates(State(node): State<Arc<Node>>) -> ApiResult<Vec<Candidate>> {
+    Ok(Json(node.candidates(now_ms())?))
 }
 
 async fn peers(State(node): State<Arc<Node>>) -> ApiResult<Vec<Signed<Descriptor>>> {

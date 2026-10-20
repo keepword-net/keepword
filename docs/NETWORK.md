@@ -41,7 +41,10 @@ A witness at home counts as its home network and sees pages as visitors
 do, but can't accept connections: install it with `--relay auto`, and it
 is reached through one of the witnesses it knows (or `--relay URL`, a
 given one). Every witness relays for up to `network.relay_witnesses`
-others (8, at most 2 per address): it only passes requests on.
+others (8, at most 2 per address): it only passes requests on. A witness
+at home observes nobody, so it can't confirm where others are; it takes
+its relay's view. The network still needs witnesses that accept
+connections, on several networks: they observe, place and relay.
 
 ## 2. Before you start (every witness)
 

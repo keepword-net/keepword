@@ -710,6 +710,15 @@ the witness, because its own pushes reach them directly, and place it in
 its home network. To other nodes it is a witness with an endpoint: only
 the witness and its relay need to support relaying.
 
+Observing nobody, it can't place other witnesses, which takes a node's
+own receipts (§6.3), nor confirm its own location. Without places it
+would compute no assignments and never take its share of requests. So it
+places witnesses where its relay does, from the relay's
+`/v1/candidates` (networks and countries, no addresses) each round. That
+only steers its own work, which a relay could stop anyway by withholding.
+Witnesses at home add vantage points and capacity; only witnesses that
+accept connections observe, place others and relay.
+
 Every witness that accepts connections relays, for up to
 `network.relay_witnesses` others (8), at most 2 per address so keys one
 person makes up can't fill it, each while it keeps polling. With

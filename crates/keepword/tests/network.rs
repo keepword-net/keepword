@@ -889,6 +889,8 @@ async fn witness_behind_a_relay() {
     let home = spawn_with(64504, "US", "witness-home", boot, |c| {
         c.network.endpoint = None;
         c.network.relay = Some("auto".into());
+        // It observes nobody, so it places witnesses where its relay does.
+        c.quorum.trust_self_reported = false;
     })
     .await;
     tokio::spawn(keepword::relay::client(home.node.clone(), |_| {}));
@@ -925,7 +927,10 @@ async fn witness_behind_a_relay() {
     let bundle = nodes[3].node.bundle(&cap.record, false).unwrap();
     assert_eq!(bundle.inclusion.unwrap().cosignatures.len(), 3);
 
-    // It is assigned requests, and its captures count.
+    // It places all four witnesses, itself included, as its relay does,
+    // so it knows which requests are its own; and its captures count.
+    let now = keepword_core::now_ms();
+    assert_eq!(nodes[3].node.candidates(now).unwrap().len(), 4);
     let requested = format!("{site}/page/watched");
     nodes[1]
         .node

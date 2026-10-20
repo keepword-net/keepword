@@ -565,6 +565,19 @@ impl Node {
     /// saw it connect (for this node itself, where its peers saw it; see
     /// `vantage::corroborate`), or self-reported if the config allows it.
     pub fn location_of(&self, key: &WitnessKey, now: i64) -> Result<Option<Location>> {
+        // Behind a relay this node observes nobody: it places witnesses where
+        // its relay does. That only steers its own work, which a relay could
+        // stop anyway by withholding.
+        let view = self.relay.view.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(c) = view.get(key) {
+            return Ok(Some(Location {
+                asn: c.asn,
+                country: c.country.clone(),
+                observers: 1,
+                direct: false,
+            }));
+        }
+        drop(view);
         if let Some(db) = &self.asn_db {
             let me = self.key.public();
             let since = now - 30 * 86_400_000;
@@ -875,6 +888,20 @@ impl Node {
     pub async fn sync(&self) -> Result<SyncReport> {
         let mut report = SyncReport::default();
         self.publish(Gossip::Descriptor(self.descriptor()))?;
+        let via = self
+            .relay
+            .via
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        if let Some(relay) = via
+            && let Ok(view) = (self.net)
+                .get_json::<Vec<Candidate>>(&join(&relay, "/v1/candidates"))
+                .await
+        {
+            *self.relay.view.lock().unwrap_or_else(|p| p.into_inner()) =
+                view.into_iter().map(|c| (c.key, c)).collect();
+        }
         // Only checkpoints travel, and gossip deduplicates them, so this is
         // one message per interval however often the node syncs.
         if let Some(h) = self.checkpoint()? {

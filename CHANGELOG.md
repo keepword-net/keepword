@@ -14,10 +14,11 @@ only change incompatibly in a new major version.
   it finds a witness that relays for it among those it knows, and peers
   reach its API at `<relay>/v1/relay/<key>`, through polls it keeps open
   to that witness. It is audited, assigned requests and counted like any
-  witness, and located in its home network. A relay stores nothing and
-  can't forge, only withhold. Every witness relays, for up to
-  `network.relay_witnesses` others (8, at most 2 per address). Only the
-  witness and its relay need this version (DESIGN.md §6.9).
+  witness, and located in its home network. Observing nobody itself, it
+  places witnesses where its relay does (`/v1/candidates`). A relay
+  stores nothing and can't forge, only withhold. Every witness relays,
+  for up to `network.relay_witnesses` others (8, at most 2 per address).
+  Only the witness and its relay need this version (DESIGN.md §6.9).
 
 ### Changed
 
