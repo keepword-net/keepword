@@ -583,7 +583,9 @@ if [ -n "$PUBLIC_API" ] && [ -z "$ENDPOINT" ] && [ "$DETECT" -eq 1 ] \
     ip=$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)
     case "$ip" in ''|*[!0-9.]*) ;; *) ENDPOINT="http://$ip:${PUBLIC_API##*:}" ;; esac
 fi
+# Reached at an endpoint or through a relay: setting one clears the other.
 if [ -n "$ENDPOINT" ]; then
+    keepword config unset network.relay
     keepword config set network.endpoint "$ENDPOINT"
     info "advertising $ENDPOINT"
 fi
