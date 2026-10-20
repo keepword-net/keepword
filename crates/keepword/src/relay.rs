@@ -48,6 +48,8 @@ const QUEUE: usize = 32;
 const POLLERS: usize = 4;
 /// Witnesses relayed for one address (an IPv6 /64 is one).
 const PER_ADDRESS: usize = 2;
+/// Polls in a row that may fail before a witness gives its relay up.
+const RETRIES: u64 = 3;
 
 /// A peer's request, handed to the witness.
 #[derive(Serialize, Deserialize)]
@@ -62,7 +64,7 @@ pub(crate) struct Relayed {
 }
 
 /// The witness's answer to one.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Answer {
     id: u64,
     status: u16,
@@ -344,7 +346,8 @@ async fn serve_via(
     futures::future::try_join_all(pollers).await.map(|_| ())
 }
 
-/// Answer the request a poll got with the next poll, until one fails.
+/// Answer the request a poll got with the next poll, until polls keep
+/// failing.
 async fn poller(
     node: &Node,
     api: &Router,
@@ -353,12 +356,25 @@ async fn poller(
     stamp: &AtomicI64,
     mut next: Option<Relayed>,
 ) -> anyhow::Result<()> {
+    let mut answer = None;
+    let mut failed = 0;
     loop {
-        let answer = match next.take() {
-            Some(r) => Some(handle(api, r).await),
-            None => None,
-        };
-        next = poll_once(node, url, relay, stamp, answer).await?;
+        if let Some(r) = next.take() {
+            answer = Some(handle(api, r).await);
+        }
+        match poll_once(node, url, relay, stamp, answer.clone()).await {
+            Ok(n) => {
+                next = n;
+                answer = None;
+                failed = 0;
+            }
+            // A blip, or the relay restarting: try again, with the answer.
+            Err(_) if failed < RETRIES => {
+                failed += 1;
+                tokio::time::sleep(Duration::from_secs(2 * failed)).await;
+            }
+            Err(e) => return Err(e),
+        }
     }
 }
 
