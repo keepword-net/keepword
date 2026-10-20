@@ -7,6 +7,17 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-20
+
+Witnesses at home, reached through relays, witnesses that need no
+domain, a container image with each release, and diffs and alerts that
+read easier. Formats, the normalizer and the protocol are unchanged:
+2.3.0 and 2.4.0 witnesses federate, compare captures and verify each
+other's bundles as before. Relaying is new, and only a witness at home
+and the witness relaying for it need 2.4.0: with `--relay auto`, a
+witness at home finds one among those it knows that run it. Upgrade the
+witnesses that accept connections first, so there are relays to find.
+
 ### Added
 
 - **Witnesses at home.** A node that can't accept connections, behind
@@ -582,6 +593,7 @@ produce evidence anyone can verify offline.
 - A private web UI with history, diffs, verdicts, alerts and the network.
 - Licensed under the GNU AGPL v3.
 
+[2.4.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.4.0
 [2.3.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.3.0
 [2.2.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.2.0
 [2.1.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.1.0
