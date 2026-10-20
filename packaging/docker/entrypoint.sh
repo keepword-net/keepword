@@ -25,8 +25,17 @@ if [ ! -f "$dir/keepword.toml" ]; then
     keepword init $init_args
 fi
 
-[ -z "${KEEPWORD_ENDPOINT:-}" ] || cfg network.endpoint "$KEEPWORD_ENDPOINT"
-[ -z "${KEEPWORD_RELAY:-}" ] || cfg network.relay "$KEEPWORD_RELAY"
+# Reached at an endpoint or through a relay: setting one clears the other.
+if [ -n "${KEEPWORD_ENDPOINT:-}" ] && [ -n "${KEEPWORD_RELAY:-}" ]; then
+    echo "error: set KEEPWORD_ENDPOINT or KEEPWORD_RELAY, not both" >&2
+    exit 1
+elif [ -n "${KEEPWORD_ENDPOINT:-}" ]; then
+    keepword config unset network.relay
+    cfg network.endpoint "$KEEPWORD_ENDPOINT"
+elif [ -n "${KEEPWORD_RELAY:-}" ]; then
+    keepword config unset network.endpoint
+    cfg network.relay "$KEEPWORD_RELAY"
+fi
 if [ -n "${KEEPWORD_PEERS:-}" ]; then
     list=$(printf '%s' "$KEEPWORD_PEERS" | awk -F, '{for (i = 1; i <= NF; i++) printf "%s\"%s\"", (i > 1 ? ", " : ""), $i}')
     cfg network.peers "[$list]"
