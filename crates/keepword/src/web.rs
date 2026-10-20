@@ -567,15 +567,15 @@ async fn network_page(State(node): State<Arc<Node>>) -> WebResult<Html<String>> 
     let now = now_ms();
     let mut b = String::from("<h1>Network</h1>");
     let me = node.location_of(&node.key.public(), now)?;
+    let endpoint = match (node.endpoint(), &node.config.network.relay) {
+        (Some(e), _) => e,
+        (None, Some(_)) => "none yet, looking for a relay".into(),
+        (None, None) => "none (push-only)".into(),
+    };
     b.push_str(&format!(
         "<p>This witness: <span class=mono>{}</span> · endpoint {} · location {}</p>",
         node.key.public().short(),
-        esc(node
-            .config
-            .network
-            .endpoint
-            .as_deref()
-            .unwrap_or("none (push-only)")),
+        esc(&endpoint),
         me.map(|l| format!("AS{} {}", l.asn, esc(&l.country)))
             .unwrap_or_else(|| "not corroborated".into())
     ));
