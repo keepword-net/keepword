@@ -7,6 +7,8 @@ pub mod net;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
+use keepword_core::net::TlsnReceipt;
+use keepword_core::statement::Signed;
 use keepword_core::{
     CaptureMethod, Digest, Keypair, SignedAttestation, SignedTreeHead, TreeHead, merkle,
     merkle::MerkleCache,
@@ -593,6 +595,15 @@ impl Store {
             let rows = st.query_map([url], |r| Ok((digest(r, 0)?, digest(r, 1)?, r.get(2)?)))?;
             rows.collect::<rusqlite::Result<_>>()?
         };
+        // A notarized capture's TLS transcript holds the whole response too.
+        let receipts: Vec<String> = {
+            let mut st = tx.prepare(
+                "SELECT t.receipt FROM tlsn_proofs t JOIN attestations a ON a.id = t.attestation
+                 WHERE a.url = ?1",
+            )?;
+            let rows = st.query_map([url], |r| r.get(0))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
         let mut candidates: Vec<Digest> = Vec::new();
         for (b, h, n) in hashes {
             candidates.push(b);
@@ -600,6 +611,10 @@ impl Store {
             if let Some(n) = n.as_deref().and_then(Digest::from_slice) {
                 candidates.push(n);
             }
+        }
+        for r in receipts {
+            let r: Signed<TlsnReceipt> = serde_json::from_str(&r)?;
+            candidates.push(r.body.received_hash);
         }
         candidates.sort();
         candidates.dedup();
@@ -618,6 +633,10 @@ impl Store {
         let rows = if forget {
             tx.execute("DELETE FROM changes WHERE url = ?1", [url])?;
             tx.execute("DELETE FROM watch WHERE url = ?1", [url])?;
+            tx.execute(
+                "DELETE FROM tlsn_proofs WHERE attestation IN (SELECT id FROM attestations WHERE url = ?1)",
+                [url],
+            )?;
             tx.execute("DELETE FROM attestations WHERE url = ?1", [url])?
         } else {
             0

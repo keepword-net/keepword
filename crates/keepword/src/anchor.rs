@@ -92,6 +92,15 @@ impl Node {
                 let Attestation::Pending { uri } = &claim.attestation else {
                     continue;
                 };
+                // A calendar that gave its Bitcoin proof has nothing to add.
+                let delivered = d.timestamp.node_mut(&claim.msg).is_some_and(|n| {
+                    n.claims()
+                        .iter()
+                        .any(|c| matches!(c.attestation, Attestation::Bitcoin { .. }))
+                });
+                if delivered {
+                    continue;
+                }
                 let url = join(uri, &format!("/timestamp/{}", hex::encode(&claim.msg)));
                 let upgrade = match self.net.get_bytes(&url, MAX_OTS).await {
                     Ok(body) => {
@@ -213,6 +222,9 @@ pub async fn verify_anchor_online(http: &Http, esplora: &str, b: &Bundle, report
     if btc.is_empty() {
         return;
     }
+    // One block the explorer can't tell about, say not indexed yet, leaves
+    // the others to settle it.
+    let mut unreachable = None;
     for (height, root) in &btc {
         match check_block(http, esplora, *height, root).await {
             Ok(true) => {
@@ -225,18 +237,20 @@ pub async fn verify_anchor_online(http: &Http, esplora: &str, b: &Bundle, report
             }
             Ok(false) => {}
             Err(e) => {
-                report.set(
-                    "anchor",
-                    Status::Skip,
-                    format!("{offline}: could not reach explorer: {e:#}"),
-                );
-                return;
+                unreachable.get_or_insert(e);
             }
         }
     }
-    report.set(
-        "anchor",
-        Status::Fail,
-        "no claimed block has the committed Merkle root",
-    );
+    match unreachable {
+        Some(e) => report.set(
+            "anchor",
+            Status::Skip,
+            format!("{offline}: could not reach explorer: {e:#}"),
+        ),
+        None => report.set(
+            "anchor",
+            Status::Fail,
+            "no claimed block has the committed Merkle root",
+        ),
+    }
 }

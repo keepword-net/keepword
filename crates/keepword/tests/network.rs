@@ -875,6 +875,72 @@ async fn forks_are_found_behind_a_flood_of_old_heads() {
     );
 }
 
+/// A poll that fails, a blip or the relay restarting, is tried again with
+/// the answer it carried: the witness keeps its relay, and the request
+/// waiting at the relay gets its answer.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn failed_polls_are_retried() {
+    let relay = spawn(64501, "DE", "witness-a", vec![]).await;
+    // The relay again, through a proxy that fails the next polls sent to it
+    // (below zero, none).
+    let failing = Arc::new(std::sync::atomic::AtomicIsize::new(0));
+    let f = failing.clone();
+    let app = keepword::api::router(relay.node.clone()).layer(axum::middleware::from_fn(
+        move |req: axum::extract::Request, next: axum::middleware::Next| {
+            let f = f.clone();
+            async move {
+                if req.method() == axum::http::Method::POST && f.fetch_sub(1, Ordering::SeqCst) > 0
+                {
+                    return axum::response::IntoResponse::into_response(
+                        axum::http::StatusCode::BAD_GATEWAY,
+                    );
+                }
+                next.run(req).await
+            }
+        },
+    ));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let via = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    let home = spawn_with(64504, "US", "witness-home", vec![], |c| {
+        c.network.endpoint = None;
+        c.network.relay = Some(via.clone());
+    })
+    .await;
+    let dropped = Arc::new(AtomicBool::new(false));
+    let d = dropped.clone();
+    tokio::spawn(keepword::relay::client(home.node.clone(), move |l| {
+        if l.starts_with("relay ") {
+            d.store(true, Ordering::SeqCst);
+        }
+    }));
+    let mut relayed = None;
+    for _ in 0..50 {
+        relayed = home.node.endpoint();
+        if relayed.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let relayed = relayed.expect("taken by the relay");
+
+    // The answer to this request goes out with polls that fail twice.
+    failing.store(2, Ordering::SeqCst);
+    let r = reqwest::get(format!("{relayed}/v1/descriptor"))
+        .await
+        .unwrap();
+    assert!(r.status().is_success(), "{}", r.status());
+    assert!(failing.load(Ordering::SeqCst) <= 0, "both polls failed");
+    assert!(!dropped.load(Ordering::SeqCst), "the relay was given up");
+}
+
 /// A witness that can't accept connections finds a relay among the
 /// witnesses it knows, which all relay by default, and reaches the network
 /// through it: peers audit its log, assign it requests and count its
@@ -931,6 +997,10 @@ async fn witness_behind_a_relay() {
     // so it knows which requests are its own; and its captures count.
     let now = keepword_core::now_ms();
     assert_eq!(nodes[3].node.candidates(now).unwrap().len(), 4);
+    // So do commands run beside it, which can't ask the relay.
+    let beside = Node::open(&nodes[3].node.dir).unwrap();
+    assert_eq!(beside.candidates(now).unwrap().len(), 4);
+    assert!(beside.location_of(&home_key, now).unwrap().is_some());
     let requested = format!("{site}/page/watched");
     nodes[1]
         .node

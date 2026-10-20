@@ -42,6 +42,28 @@ only change incompatibly in a new major version.
   1.90). The installer used a system Rust from 1.85 on, which then failed
   to build; it now uses one from 1.95 on and otherwise installs stable.
 
+### Fixed
+
+- **`keepword diff URL` showed a silent edit on pages that hadn't
+  changed**, after the upgrade to 2.3.0. It diffed the latest capture
+  with the last one made by the previous normalizer, which differs at
+  least in its version line, and `keepword history` counted it as a new
+  version. Both now only compare captures normalized the same way, as
+  change detection always did, and `diff` warns when two captures it was
+  given weren't.
+- **`keepword purge` kept the TLS transcripts of notarized captures**,
+  each the whole response, with `content.retain = "full"` and the
+  TLSNotary tier. They are deleted with the rest, and `--forget` drops
+  the receipts too.
+- **Anchoring asked the calendars again for every anchor not yet
+  confirmed, every round**, also for proofs they had completed. Without
+  a block explorer (`anchor.esplora_url = ""`) none is ever confirmed,
+  so the requests grew with every anchor made. A calendar is no longer
+  asked once it has given its Bitcoin proof.
+- **`keepword verify --esplora` gave up at the first block the explorer
+  couldn't tell about**, say one not indexed yet, and left the anchor
+  unchecked. It tries the other claimed blocks.
+
 ## [2.3.0] - 2026-10-19
 
 A second default seed, a normalizer that no longer raises silent-edit

@@ -48,6 +48,8 @@ const QUEUE: usize = 32;
 const POLLERS: usize = 4;
 /// Witnesses relayed for one address (an IPv6 /64 is one).
 const PER_ADDRESS: usize = 2;
+/// Polls in a row that may fail before a witness gives its relay up.
+const RETRIES: u64 = 3;
 
 /// A peer's request, handed to the witness.
 #[derive(Serialize, Deserialize)]
@@ -62,7 +64,7 @@ pub(crate) struct Relayed {
 }
 
 /// The witness's answer to one.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Answer {
     id: u64,
     status: u16,
@@ -101,6 +103,37 @@ struct Slot {
 impl Relay {
     fn slots(&self) -> std::sync::MutexGuard<'_, HashMap<WitnessKey, Slot>> {
         self.slots.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Place witnesses where the relay does.
+    pub(crate) fn set_view(&self, candidates: Vec<Candidate>) {
+        *self.view.lock().unwrap_or_else(|p| p.into_inner()) =
+            candidates.into_iter().map(|c| (c.key, c)).collect();
+    }
+}
+
+/// The relay a witness was last reached through and where it placed
+/// witnesses, saved each sync: commands run beside the service can't ask
+/// the relay, and the service starting again places witnesses at once.
+#[derive(Serialize, Deserialize)]
+pub struct Saved {
+    pub relay: String,
+    pub candidates: Vec<Candidate>,
+}
+
+const SAVED: &str = "relay.json";
+
+impl Saved {
+    pub fn load(dir: &std::path::Path) -> Option<Saved> {
+        serde_json::from_slice(&std::fs::read(dir.join(SAVED)).ok()?).ok()
+    }
+
+    pub(crate) fn save(&self, dir: &std::path::Path) -> anyhow::Result<()> {
+        // Replaced whole, so a command never reads half of it.
+        let tmp = dir.join(format!("{SAVED}.tmp"));
+        std::fs::write(&tmp, serde_json::to_vec(self)?)?;
+        std::fs::rename(tmp, dir.join(SAVED))?;
+        Ok(())
     }
 }
 
@@ -314,7 +347,8 @@ async fn serve_via(
     futures::future::try_join_all(pollers).await.map(|_| ())
 }
 
-/// Answer the request a poll got with the next poll, until one fails.
+/// Answer the request a poll got with the next poll, until polls keep
+/// failing.
 async fn poller(
     node: &Node,
     api: &Router,
@@ -323,12 +357,25 @@ async fn poller(
     stamp: &AtomicI64,
     mut next: Option<Relayed>,
 ) -> anyhow::Result<()> {
+    let mut answer = None;
+    let mut failed = 0;
     loop {
-        let answer = match next.take() {
-            Some(r) => Some(handle(api, r).await),
-            None => None,
-        };
-        next = poll_once(node, url, relay, stamp, answer).await?;
+        if let Some(r) = next.take() {
+            answer = Some(handle(api, r).await);
+        }
+        match poll_once(node, url, relay, stamp, answer.clone()).await {
+            Ok(n) => {
+                next = n;
+                answer = None;
+                failed = 0;
+            }
+            // A blip, or the relay restarting: try again, with the answer.
+            Err(_) if failed < RETRIES => {
+                failed += 1;
+                tokio::time::sleep(Duration::from_secs(2 * failed)).await;
+            }
+            Err(e) => return Err(e),
+        }
     }
 }
 
