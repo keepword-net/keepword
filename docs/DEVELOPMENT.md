@@ -23,10 +23,14 @@ packaging/docker/          container entrypoint and compose file
 Before sending a change:
 
 ```sh
-cargo test --workspace
-cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+cargo build --workspace --features keepword/render
 ```
+
+[CONTRIBUTING.md](../CONTRIBUTING.md#run-the-checks) has the checks for
+the TLSNotary tier and the scripts.
 
 ## Tests
 
@@ -39,9 +43,14 @@ Integration tests run everything over real HTTP on localhost:
   withdrawing them, dropping gossip from strangers, a disagreement nobody
   can recheck staying disputed, equivocation and forks of different
   sizes), a six-node network with one-peer gossip samples and two auditors
-  per log, and a twelve-node network in two countries where rechecks
+  per log, a twelve-node network in two countries where rechecks
   overrule a lone dissenter and confirm, then alert on, a real regional
-  difference
+  difference, and a witness at home reached through a relay
+- `stability.rs`: what one hostile client or key can make a node do (CPU
+  and storage stay bounded, dead peers don't starve gossip, new message
+  kinds don't stall it), and peers behind a CDN placed where they are
+- `keepword-capture/tests/tls.rs`: the certificate fingerprint and server
+  address recorded on direct connections
 - `anchoring.rs`: drand beacons and Bitcoin anchoring against mock drand,
   OpenTimestamps and Esplora services
 - `keepword-normalize/tests/corpus.rs`: the normalizer regression corpus

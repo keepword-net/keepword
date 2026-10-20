@@ -53,6 +53,9 @@ decline_hosts = ["intranet.example"]
 max_request_watches = 200  # most URLs captured for the network at once
 render_requests = false    # render requests in Chromium; see docs/DESIGN.md §6.4
 allow_private_peers = false  # true only for a closed network on a LAN
+# Requests a minute the public API answers from one address, in bursts of
+# as many; 0 = no limit. Behind a proxy it needs trust_forwarded_for.
+api_requests_per_minute = 600
 
 [beacon]
 drand_url = "https://api.drand.sh"   # "" to disable
@@ -65,6 +68,16 @@ min_dissent_asns = 2
 asn_db = "/var/lib/keepword/ip2asn-combined.tsv"   # from iptoasn.com
 min_observers = 2
 trust_self_reported = false          # true only for test networks
+# When assigned witnesses disagree, witnesses drawn at random from the same
+# countries capture the URL again, and only versions they reproduce count
+# (docs/DESIGN.md §6.5).
+recheck_size = 5                     # drawn per country; same on every witness
+recheck_quorum = 3                   # networks that must reproduce a version
+recheck_secs = 1800                  # how long after a disputed round rechecks run
+max_rechecks_per_hour = 30           # most recheck captures this node makes
+split_confirmations = 3              # a split alert needs this many confirmed splits
+split_rounds = 4                     # among this many most recent settled rounds
+max_failed_claims = 5                # a network prefix whose claims fail this often a week is left out
 
 [anchor]
 calendars = [

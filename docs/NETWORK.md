@@ -275,12 +275,20 @@ sudo sh scripts/install.sh --uninstall --purge     # deletes key and log
 sudo sh scripts/install.sh --domain wN.example.org --caddy --peer https://w1.example.org
 ```
 
-To keep a test witness's key instead, undo every test setting
-(`keepword config unset quorum.trust_self_reported`, and likewise
-`network.max_per_country`, `quorum.min_asns`, `quorum.min_dissent_asns`,
-`network.allow_private_peers`, `vantage.asn`), set its public endpoint and
-peers, remove the old LAN peers with `keepword net remove-peer`, and
-restart it.
+To keep a test witness's key instead, set every test setting back to its
+default and let corroboration place the witness:
+
+```sh
+keepword config set quorum.trust_self_reported false
+keepword config set network.allow_private_peers false
+keepword config set network.max_per_country 2
+keepword config set quorum.min_asns 3
+keepword config set quorum.min_dissent_asns 2
+keepword config unset vantage.asn
+```
+
+Then set its public endpoint and peers, remove the old LAN peers with
+`keepword net remove-peer`, and restart it.
 
 ## 9. Troubleshooting
 

@@ -44,13 +44,26 @@ keepword verify --bundle evidence.json
   [ok  ] signature      signed by witness 7b757b5c…
   [ok  ] tree head      size 1204 root 3fc10f581373
   [ok  ] log inclusion  leaf 1187 of 1204
+  [skip] cosignatures   no other witness has cosigned this tree head
+  [ok  ] not before     captured after 2026-05-01T09:14:03Z (drand round 28274493, 2s before the claimed time)
   [ok  ] headers        467 bytes, hash 13d3817dd54e
-  [ok  ] body           41233 bytes, hash 4b768329a126
+  [skip] body           not included
   [ok  ] normalized     matches 61a162ac8062
-  [ok  ] renormalize    body normalizes to the attested norm hash
+  [skip] renormalize    needs the body and a norm commitment
 
-VERIFIED
+VERIFIED: LOGGED
+
+This bundle shows
+  - a witness (7b757b5c…) signed that it saw this page at the stated time
+  - the statement is in that witness's append-only public log
+  ...
 ```
+
+That is a node on its own, keeping the default `content.retain =
+normalized`. With `full`, the bundle carries the page's bytes, and `body`
+and `renormalize` are checked too. In a network, other witnesses cosign the
+log (`LOGGED + COSIGNED`), and `verify --esplora URL` checks the Bitcoin
+anchor.
 
 ## Commands
 
@@ -59,9 +72,9 @@ VERIFIED
 | `init [--asn N] [--country CC] [--retain full\|normalized\|none]` | Create key, config and empty log |
 | `id` | Show witness key and log head |
 | `capture URL [--render]` | Fetch now, attest, log, compare with the previous capture |
-| `verify URL\|ID [--at TIME]` / `verify --bundle FILE` | Run every check on a stored capture or a bundle |
+| `verify URL\|ID [--at TIME]` / `verify --bundle FILE` `[--esplora URL]` | Run every check on a stored capture or a bundle; `--esplora` checks Bitcoin anchors |
 | `export URL\|ID [--at TIME] [--no-content] [-o FILE]` | Write an evidence bundle |
-| `warc URL\|ID -o FILE` | Rebuild a WARC 1.1 file for a capture |
+| `warc URL\|ID [--at TIME] -o FILE` | Rebuild a WARC 1.1 file for a capture |
 | `history URL` | All captures and detected changes |
 | `diff URL` / `diff ID ID` / `diff --bundle FILE FILE` | Diff the last two versions, two captures, or two bundles (no node needed) |
 | `watch add\|rm\|list\|run [--once]` | Manage and run the watchlist |
@@ -69,10 +82,10 @@ VERIFIED
 | `purge URL [--forget]` | Erase stored content (and records); the log stays valid |
 | `serve [--addr A] [--api-addr B] [--watch] [--anchor]` | Web UI (private), peer API (public), scheduler, federation and anchoring loops |
 | `net add-peer URL\|remove-peer KEY\|peers\|sync\|status\|lookup IP` | Federation with other witnesses; `status` warns about misconfiguration |
-| `request URL [--every 1h] [--for 7days]` / `request URL --cancel` | Ask the network to watch a URL (asking again replaces the request), or withdraw it |
+| `request URL [--every 1h] [--for 7days] [--render]` / `request URL --cancel` | Ask the network to watch a URL (asking again replaces the request), or withdraw it |
 | `requests [--mine]` | Active network watch requests |
 | `verdict URL` | What independent witnesses agree the URL served |
-| `alerts` | Split, silent-edit and equivocation alerts |
+| `alerts [--limit 50]` | Split, silent-edit and equivocation alerts |
 | `anchor submit\|upgrade\|list\|export` | Bitcoin anchoring via OpenTimestamps |
 | `beacon [ROUND]` | Fetch and verify a drand beacon |
 | `config show\|get\|set\|unset` | Read or change `keepword.toml`, with validation |

@@ -93,7 +93,7 @@ checkout it was run from, or clones `--repo`/`--ref` into `/opt/keepword/src`.
 | `/usr/local/lib/keepword/update-asn-db` | IP-to-ASN refresh script |
 | `/var/lib/keepword/` | key, `keepword.toml`, SQLite index, blobs, ASN table |
 | `/opt/keepword/` | Rust toolchain, build cache, cloned source |
-| `keepword.service` | the node: `serve --watch --anchor`, UI on 127.0.0.1:8480, API on 127.0.0.1:8481 |
+| `keepword.service` | the node: `serve --watch --anchor`, UI on 127.0.0.1:8480, API on 127.0.0.1:8481 (or the `--public-api` address) |
 | `keepword-asn-update.timer` | weekly ASN table refresh (cron on OpenRC) |
 | `keepword-notary.service` | with `--notary` |
 | `/etc/caddy/keepword.caddy` | with `--caddy`; imported from the Caddyfile |

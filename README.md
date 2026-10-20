@@ -83,7 +83,7 @@ $ keepword verify --bundle evidence.json --esplora https://blockstream.info/api
   [ok  ] signature      signed by witness 7b757b5c…
   [ok  ] log inclusion  leaf 1187 of 1204
   [ok  ] cosignatures   tree head cosigned by 16 other keys
-  [ok  ] not before     captured after 2026-05-01T09:14:03Z (drand round 5902114, 2s before the claimed time)
+  [ok  ] not before     captured after 2026-05-01T09:14:03Z (drand round 28274493, 2s before the claimed time)
   [ok  ] anchor         tree head existed by Bitcoin block 947301
   [ok  ] body           41233 bytes, hash 4b768329a126
   ...

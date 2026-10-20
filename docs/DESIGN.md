@@ -332,7 +332,8 @@ uses plain HTTPS between nodes instead:
   a public endpoint still sends and receives everything; it just can't be
   audited or asked for its attestations, and, since nobody pushes to it,
   it can't place other witnesses in networks (§6.3), so it can't compute
-  verdicts itself.
+  verdicts itself. Behind a relay it is reached through the relay, and
+  takes the relay's places (§6.9).
 - **Smaller attack surface and dependency tree.** libp2p remains an option
   as a second transport. All messages are transport-agnostic signed
   statements.
@@ -473,8 +474,9 @@ With peer sampling every witness pushes to every other within about a day
 (sooner in small networks), so a new witness counts at every node within
 about a day, and all honest nodes see the same location. A node without a
 public endpoint receives no pushes, so it can't place other witnesses and
-its own verdicts stay insufficient; it still captures, requests and
-relays. An observer issues a new receipt for the same witness at
+its own verdicts stay insufficient, unless it is behind a relay, whose
+places it takes (§6.9); it still captures, requests and passes on gossip.
+An observer issues a new receipt for the same witness at
 the same address at most weekly, and hands back the existing one
 otherwise, so receipts don't grow with sync rounds. Without an ASN table
 nothing is corroborated. `quorum.trust_self_reported` exists for test networks
@@ -798,7 +800,8 @@ before public operation. The design aims to leave room for compliance.
   Capping peers per network prefix of their endpoint (as failed claims are
   counted per /24 and /48) would make each such key cost an address.
 - **Nodes without a public endpoint.** Nobody pushes to them, so they
-  can't place other witnesses (§6.3) or compute verdicts. Recording where
+  can't place other witnesses (§6.3) or compute verdicts. Behind a relay
+  they take the relay's places (§6.9), which trusts the relay. Recording where
   a node reached each peer's endpoint would give every node a first-hand
   location for every candidate, at the same cost per fake network as a
   push (one real address in that network).

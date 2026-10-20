@@ -19,7 +19,7 @@ Not all of it is code:
   `crates/keepword-normalize/tests/corpus/` are hand-built. Real pages,
   with the noise that changes between two requests to them, are the most
   valuable thing the normalizer can get (see
-  [DESIGN.md §4](docs/DESIGN.md#4-normalization-v3-implemented)).
+  [DESIGN.md §4](docs/DESIGN.md#4-normalization-v4-implemented)).
 - **Teach the normalizer your language.** Relative times ("vor 3
   Stunden") and update notices ("aktualisiert", "mise à jour") are matched
   per language. If yours is missing, add it with a test. A new relative
@@ -97,7 +97,7 @@ If you touched `crates/keepword-tlsn`:
 ```sh
 cd crates/keepword-tlsn
 cargo fmt --check
-cargo clippy --release --all-targets
+cargo clippy --release --all-targets -- -D warnings
 cargo test --release
 ```
 
@@ -186,14 +186,8 @@ Open an [issue](https://git.keepword.net/keepword/keepword/issues) with:
 ## Security vulnerabilities
 
 Please **don't** open a public issue for a vulnerability. Email
-**security@keepword.net** instead, with what you found and how to
-reproduce it. You'll get a reply, and a fix will be coordinated with you
-before anything is made public.
-
-This covers anything that lets someone forge or backdate evidence, make a
-verifier accept a bundle it shouldn't, rewrite a log without getting
-caught, make a witness fetch addresses it shouldn't, or crash or exhaust a
-witness from a page or a peer. When in doubt, email.
+**security@keepword.net** instead. [SECURITY.md](SECURITY.md) says what to
+include, what counts and how fixes are released.
 
 ## AI-assisted contributions
 
