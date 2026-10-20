@@ -55,6 +55,14 @@ only change incompatibly in a new major version.
   each the whole response, with `content.retain = "full"` and the
   TLSNotary tier. They are deleted with the rest, and `--forget` drops
   the receipts too.
+- **Anchoring asked the calendars again for every anchor not yet
+  confirmed, every round**, also for proofs they had completed. Without
+  a block explorer (`anchor.esplora_url = ""`) none is ever confirmed,
+  so the requests grew with every anchor made. A calendar is no longer
+  asked once it has given its Bitcoin proof.
+- **`keepword verify --esplora` gave up at the first block the explorer
+  couldn't tell about**, say one not indexed yet, and left the anchor
+  unchecked. It tries the other claimed blocks.
 
 ## [2.3.0] - 2026-10-19
 

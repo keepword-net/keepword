@@ -10,6 +10,8 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as B64;
 use keepword::Node;
 use keepword::config::Config;
 use keepword_core::beacon::Beacon;
@@ -19,14 +21,14 @@ use tokio::net::TcpListener;
 
 const SIG_123: &str = "b75c69d0b72a5d906e854e808ba7e2accb1542ac355ae486d591aa9d43765482e26cd02df835d3546d23c4b13e0dfc92";
 const HEIGHT: u64 = 800_000;
-const BLOCK_HASH: &str = "00000000000000000002a7c4c1e48d76c5a37902165a270156b7a8d72728a054";
 
 #[derive(Default)]
 struct Mock {
     base: Mutex<String>,
     confirmed: AtomicBool,
-    /// Merkle root the "block" commits to (internal byte order).
-    root: Mutex<Option<Vec<u8>>>,
+    /// Commitments mined so far, each in a block of its own from HEIGHT
+    /// on, and that block's Merkle root (internal byte order).
+    mined: Mutex<Vec<(Vec<u8>, Vec<u8>)>>,
     wrong_root: AtomicBool,
     explorer_down: AtomicBool,
 }
@@ -80,10 +82,19 @@ async fn timestamp(State(m): S, Path(commitment): Path<String>) -> impl IntoResp
     let m1 = step.apply(&c).unwrap();
     let m2 = Op::Sha256.apply(&m1).unwrap();
     let root = Op::Sha256.apply(&m2).unwrap();
-    *m.root.lock().unwrap() = Some(root.clone());
+    let height = {
+        let mut mined = m.mined.lock().unwrap();
+        let i = match mined.iter().position(|(mc, _)| *mc == c) {
+            Some(i) => i,
+            None => {
+                mined.push((c.clone(), root.clone()));
+                mined.len() - 1
+            }
+        };
+        HEIGHT + i as u64
+    };
     let mut top = Timestamp::new(root);
-    top.attestations
-        .push(Attestation::Bitcoin { height: HEIGHT });
+    top.attestations.push(Attestation::Bitcoin { height });
     let mut t2 = Timestamp::new(m2);
     t2.ops.push((Op::Sha256, top));
     let mut t1 = Timestamp::new(m1);
@@ -94,15 +105,19 @@ async fn timestamp(State(m): S, Path(commitment): Path<String>) -> impl IntoResp
 }
 
 async fn block_height(State(m): S, Path(h): Path<u64>) -> impl IntoResponse {
-    assert_eq!(h, HEIGHT);
     if m.explorer_down.load(Ordering::SeqCst) {
-        return (StatusCode::SERVICE_UNAVAILABLE, "");
+        return (StatusCode::SERVICE_UNAVAILABLE, String::new());
     }
-    (StatusCode::OK, BLOCK_HASH)
+    let mined = m.mined.lock().unwrap().len() as u64;
+    if !(HEIGHT..HEIGHT + mined).contains(&h) {
+        return (StatusCode::NOT_FOUND, "Block not found".into());
+    }
+    (StatusCode::OK, format!("{h:064x}"))
 }
 
-async fn block(State(m): S, Path(_hash): Path<String>) -> impl IntoResponse {
-    let mut root = m.root.lock().unwrap().clone().unwrap_or_default();
+async fn block(State(m): S, Path(hash): Path<String>) -> impl IntoResponse {
+    let h = u64::from_str_radix(&hash, 16).unwrap();
+    let mut root = m.mined.lock().unwrap()[(h - HEIGHT) as usize].1.clone();
     if m.wrong_root.load(Ordering::SeqCst) {
         root[0] ^= 1;
     }
@@ -221,6 +236,28 @@ async fn beacon_and_bitcoin_anchor() {
     assert_eq!(anchor.status, Status::Fail);
     m.wrong_root.store(false, Ordering::SeqCst);
 
+    // A block the explorer doesn't know yet, before the one that holds,
+    // doesn't keep the chain from settling the check.
+    let mut early = b.clone();
+    let a = early.anchor.as_mut().unwrap();
+    let mut d = ots::DetachedTimestamp::from_bytes(&B64.decode(&a.ots_b64).unwrap()).unwrap();
+    let mined = d
+        .timestamp
+        .claims()
+        .into_iter()
+        .find(|c| matches!(c.attestation, Attestation::Bitcoin { .. }))
+        .unwrap();
+    d.timestamp
+        .node_mut(&mined.msg)
+        .unwrap()
+        .attestations
+        .push(Attestation::Bitcoin { height: HEIGHT - 1 });
+    a.ots_b64 = B64.encode(d.to_bytes());
+    let mut r = Node::verify_bundle(&early);
+    keepword::anchor::verify_anchor_online(&http, &base, &early, &mut r).await;
+    let anchor = r.checks.iter().find(|c| c.name == "anchor").unwrap();
+    assert_eq!(anchor.status, Status::Pass, "{}", anchor.detail);
+
     // An anchor that fails offline stays failed, whatever the chain says.
     let mut bad = b.clone();
     bad.anchor.as_mut().unwrap().leaf_index += 1;
@@ -316,6 +353,10 @@ async fn upgrades_survive_failing_calendars_and_explorers() {
         "{:?}",
         up.errors
     );
+    // A calendar that gave its proof isn't asked again; the one answering
+    // junk still is.
+    let up = node.anchor_upgrade().await.unwrap();
+    assert_eq!((up.upgraded, up.confirmed, up.errors.len()), (0, 0, 2));
     for row in node.store.anchors().unwrap() {
         assert_eq!(row.status, "pending");
         let kept = ots::DetachedTimestamp::from_bytes(&row.ots).unwrap();
@@ -323,7 +364,7 @@ async fn upgrades_survive_failing_calendars_and_explorers() {
             kept.timestamp
                 .claims()
                 .iter()
-                .any(|c| matches!(c.attestation, Attestation::Bitcoin { height: HEIGHT })),
+                .any(|c| matches!(c.attestation, Attestation::Bitcoin { .. })),
             "the completed proof was kept"
         );
     }
