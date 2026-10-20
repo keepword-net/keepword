@@ -48,12 +48,24 @@ connections, on several networks: they observe, place and relay.
 
 ## 2. Before you start (every witness)
 
-- A Linux server (1 vCPU, 1 GB RAM and 20 GB disk are plenty to start).
-- A domain name pointing at it (an `A`, and `AAAA` if it has IPv6),
-  e.g. `w1.example.org`. Use a name you can keep: it's how peers find the
-  witness.
-- Ports **80 and 443** open to everyone (Caddy gets a TLS certificate
-  through port 80). Nothing else needs to be public.
+- A Linux machine (1 vCPU, 1 GB RAM and 20 GB disk are plenty to start):
+  a server, or a machine at home.
+- A way for peers to reach it, one of:
+  - **A domain** pointing at it (an `A`, and `AAAA` if it has IPv6),
+    e.g. `w1.example.org`, and ports **80 and 443** open to everyone
+    (Caddy gets a TLS certificate through port 80). Install with
+    `--domain NAME --caddy`. Use a name you can keep: it's how peers find
+    the witness.
+  - **No domain:** port **8481** open to everyone. Install with
+    `--public-api 0.0.0.0:8481`, and peers reach it at
+    `http://<its IP>:8481`. The installer advertises the IPv4 address the
+    server has when it is first installed, so use one that doesn't
+    change; if it does, `keepword config set network.endpoint
+    http://NEW-IP:8481`.
+  - **At home, behind NAT:** nothing open. Install with `--relay auto`,
+    and peers reach it through a witness that relays for it (§1).
+
+  Nothing else needs to be public.
 - Time sync on: `timedatectl` should say `System clock synchronized: yes`.
 - Outbound HTTPS allowed to drand (`api.drand.sh`), the OpenTimestamps
   calendars and `iptoasn.com`.
@@ -68,10 +80,13 @@ cd keepword
 sudo sh scripts/install.sh --domain w1.example.org --caddy
 ```
 
-Check it answers from outside:
+Without a domain, use `--public-api 0.0.0.0:8481` instead of `--domain`
+and `--caddy` (§2). The first witnesses must accept connections: a witness
+at home needs one that does to relay for it. Check it answers from
+outside:
 
 ```sh
-curl https://w1.example.org/v1/descriptor
+curl https://w1.example.org/v1/descriptor   # or http://<its IP>:8481/v1/descriptor
 ```
 
 This first witness is the **bootstrap peer**: the address the others dial
@@ -81,7 +96,8 @@ bootstrap peer.
 
 ### Step 2: the other founding witnesses
 
-On each, with its own domain, pointing at the first:
+On each, pointing at the first, with its own domain, or with
+`--public-api` or `--relay auto` instead (§2):
 
 ```sh
 sudo sh scripts/install.sh --domain w2.example.net --caddy \
@@ -150,7 +166,8 @@ dials them when it knows few peers, so a newcomer joins with just:
 sudo sh scripts/install.sh --domain their.domain --caddy
 ```
 
-`--peer` still adds peers of your own choosing. Seeds are only used until a
+or `--public-api 0.0.0.0:8481` without a domain, or `--relay auto` at
+home. `--peer` still adds peers of your own choosing. Seeds are only used until a
 node knows enough peers, and never on a network with
 `network.allow_private_peers`, so a LAN test cluster can't wander into the
 public network. To run a **separate** network, set

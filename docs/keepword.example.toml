@@ -25,8 +25,14 @@ allow_private_addresses = false
 retain = "normalized"
 
 [network]
-# Public base URL of this node's /v1 API. Unset = push-only (behind NAT).
+# Public base URL of this node's /v1 API: https://NAME, or http://IP:PORT
+# without a domain. Unset, and with no relay, the node only pushes and is
+# never assigned requests.
 endpoint = "https://witness.example.org"
+# Instead of an endpoint, at home behind NAT: a witness that relays for this
+# one, or "auto" for one of its peers.
+# relay = "auto"
+relay_witnesses = 8        # relay for up to this many others; 0 = none
 peers = ["https://witness.other-example.net"]
 seeds = true               # also join through the built-in seed witnesses
 sync_interval_secs = 60
