@@ -881,16 +881,15 @@ async fn forks_are_found_behind_a_flood_of_old_heads() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn failed_polls_are_retried() {
     let relay = spawn(64501, "DE", "witness-a", vec![]).await;
-    // The relay again, through a proxy that fails the next polls sent to it.
-    let failing = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    // The relay again, through a proxy that fails the next polls sent to it
+    // (below zero, none).
+    let failing = Arc::new(std::sync::atomic::AtomicIsize::new(0));
     let f = failing.clone();
     let app = keepword::api::router(relay.node.clone()).layer(axum::middleware::from_fn(
         move |req: axum::extract::Request, next: axum::middleware::Next| {
             let f = f.clone();
             async move {
-                if req.method() == axum::http::Method::POST
-                    && f.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-                        .is_ok()
+                if req.method() == axum::http::Method::POST && f.fetch_sub(1, Ordering::SeqCst) > 0
                 {
                     return axum::response::IntoResponse::into_response(
                         axum::http::StatusCode::BAD_GATEWAY,
@@ -938,7 +937,7 @@ async fn failed_polls_are_retried() {
         .await
         .unwrap();
     assert!(r.status().is_success(), "{}", r.status());
-    assert_eq!(failing.load(Ordering::SeqCst), 0);
+    assert!(failing.load(Ordering::SeqCst) <= 0, "both polls failed");
     assert!(!dropped.load(Ordering::SeqCst), "the relay was given up");
 }
 
