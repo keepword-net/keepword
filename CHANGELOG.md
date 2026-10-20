@@ -25,6 +25,13 @@ only change incompatibly in a new major version.
   the installer advertises `http://<public IP>:<port>`. Before, it
   advertised nothing, so the witness was never assigned requests. Peers
   always accepted plain HTTP: everything they fetch is signed.
+- **`keepword diff` and `capture` show a change compactly on a
+  terminal**: the changed lines with a line around them, long ones cut
+  short, and the words that changed highlighted. Piped, or with
+  `NO_COLOR`, they print the unified diff as before.
+- **`keepword alerts` reads easier**: kinds in words, times to the
+  minute, an alert repeated in a row as one line (`×16 since …`), and who
+  raised it, this node or a peer's host.
 - **Building needs Rust 1.95**, as the TLSNotary tier already did (was
   1.90). The installer used a system Rust from 1.85 on, which then failed
   to build; it now uses one from 1.95 on and otherwise installs stable.

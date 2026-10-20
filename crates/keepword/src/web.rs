@@ -641,11 +641,7 @@ async fn alerts_page(State(node): State<Arc<Node>>) -> WebResult<Html<String>> {
     }
     b.push_str("<div class=wrap><table><tr><th>When</th><th>Kind</th><th>URL</th><th>Summary</th><th>From</th></tr>");
     for a in alerts {
-        let kind = match a.body.kind {
-            keepword_core::net::AlertKind::Split => "split",
-            keepword_core::net::AlertKind::SilentEdit => "silent edit",
-            keepword_core::net::AlertKind::Equivocation => "equivocation",
-        };
+        let kind = a.body.kind.label();
         let url = a
             .body
             .url

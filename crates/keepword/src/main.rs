@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,8 +8,9 @@ use clap::{Parser, Subcommand};
 use keepword::config::{Config, ContentConfig, Retain, VantageConfig};
 use keepword::{Node, Outcome, method_name, parse_time};
 use keepword_core::bundle::{Bundle, Report, Status};
+use keepword_core::net::{Alert, AlertKind};
 use keepword_core::{format_ms, merkle, now_ms, target};
-use keepword_normalize::diff;
+use keepword_normalize::diff::{self, OpTag};
 
 #[derive(Parser)]
 #[command(
@@ -305,6 +307,92 @@ fn main() {
     }
 }
 
+/// A time to the minute, for lists: `2026-10-19T11:22Z`.
+fn minute(ms: i64) -> String {
+    let t = format_ms(ms);
+    t.get(..16).map_or(t.clone(), |m| format!("{m}Z"))
+}
+
+/// A diff: unified when piped or with `NO_COLOR`, else for the terminal.
+fn print_diff(c: &diff::Change) {
+    if std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none() {
+        print_change(c);
+    } else {
+        print!("{}", c.unified);
+    }
+}
+
+/// A diff for the terminal: the changed lines with one line around them,
+/// long ones cut short, and in each changed line the words that changed.
+fn print_change(c: &diff::Change) {
+    const DIM: &str = "\x1b[2m";
+    const RED: &str = "\x1b[31m";
+    const GREEN: &str = "\x1b[32m";
+    const RESET: &str = "\x1b[0m";
+    let ops = &c.ops;
+    let line = |sign: char, color: &str, words: &[(bool, String)]| {
+        let mut s = format!("{color}{sign} ");
+        for (changed, w) in words {
+            match changed {
+                true => s.push_str(&format!("\x1b[7m{w}\x1b[27m")),
+                false => s.push_str(w),
+            }
+        }
+        println!("{s}{RESET}");
+    };
+    let mut gap = false;
+    let mut i = 0;
+    while i < ops.len() {
+        if ops[i].tag == OpTag::Equal {
+            let near = ops[i.saturating_sub(1)..(i + 2).min(ops.len())]
+                .iter()
+                .any(|o| o.tag != OpTag::Equal);
+            if near {
+                if std::mem::take(&mut gap) {
+                    println!("{DIM}  ⋯{RESET}");
+                }
+                let l = &ops[i].line;
+                let cut: String = l.chars().take(100).collect();
+                let more = if cut.len() < l.len() { "…" } else { "" };
+                println!("{DIM}  {cut}{more}{RESET}");
+            } else {
+                gap = true;
+            }
+            i += 1;
+            continue;
+        }
+        if std::mem::take(&mut gap) {
+            println!("{DIM}  ⋯{RESET}");
+        }
+        // Deletions, then insertions: paired up, a line and what it became.
+        let run = |from: usize, tag: OpTag| {
+            ops[from..]
+                .iter()
+                .take_while(|o| o.tag == tag)
+                .map(|o| o.line.as_str())
+                .collect::<Vec<_>>()
+        };
+        let del = run(i, OpTag::Delete);
+        let ins = run(i + del.len(), OpTag::Insert);
+        for k in 0..del.len().max(ins.len()) {
+            let (old, new) = match (del.get(k), ins.get(k)) {
+                (Some(a), Some(b)) => diff::words(a, b),
+                (a, b) => {
+                    let whole = |l: Option<&&str>| l.map(|l| vec![(false, l.to_string())]);
+                    (whole(a).unwrap_or_default(), whole(b).unwrap_or_default())
+                }
+            };
+            if !old.is_empty() {
+                line('-', RED, &old);
+            }
+            if !new.is_empty() {
+                line('+', GREEN, &new);
+            }
+        }
+        i += del.len() + ins.len();
+    }
+}
+
 fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(v)?);
     Ok(())
@@ -541,8 +629,9 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                 Some(c) if cli.json => print_json(&c)?,
                 Some(c) => {
                     let s = keepword::diff_summary(&aa, &ab, &c);
-                    println!("{s}  ({} → {})\n", ia.short(), ib.short());
-                    print!("{}", c.unified);
+                    let (ta, tb) = (minute(aa.fetched_at_ms), minute(ab.fetched_at_ms));
+                    println!("{s}  {ta} → {tb}  ({} → {})\n", ia.short(), ib.short());
+                    print_diff(&c);
                 }
             }
         }
@@ -964,15 +1053,35 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
             if cli.json {
                 return print_json(&alerts).map(|_| true);
             }
-            for a in alerts {
+            let me = node.key.public();
+            // The same change seen on every capture, in a row, is one line.
+            let same = |a: &Alert, b: &Alert| {
+                (a.kind, &a.url, &a.summary, a.issuer) == (b.kind, &b.url, &b.summary, b.issuer)
+            };
+            for run in alerts.chunk_by(|a, b| same(&a.body, &b.body)) {
+                let (a, first) = (&run[0].body, &run[run.len() - 1].body);
+                let kind = a.kind.label();
+                let summary = a.summary.strip_prefix(&format!("{kind}: "));
+                let repeats = match run.len() {
+                    1 => String::new(),
+                    n => format!("  ×{n} since {}", minute(first.issued_at_ms)),
+                };
+                let from = if a.issuer == me {
+                    "this node".to_string()
+                } else {
+                    let ep = node.store.peer(&a.issuer)?.and_then(|p| p.endpoint);
+                    ep.and_then(|e| Some(url::Url::parse(&e).ok()?.host_str()?.to_string()))
+                        .unwrap_or_else(|| a.issuer.short())
+                };
                 println!(
-                    "{}  {:<12} {}  {}  (from {})",
-                    format_ms(a.body.issued_at_ms),
-                    format!("{:?}", a.body.kind),
-                    a.body.url.as_deref().unwrap_or("-"),
-                    a.body.summary,
-                    a.body.issuer.short()
+                    "{}  {kind:<12}  {}  {}{repeats}  ({from})",
+                    minute(a.issued_at_ms),
+                    a.url.as_deref().unwrap_or("-"),
+                    summary.unwrap_or(&a.summary),
                 );
+            }
+            if alerts.iter().any(|a| a.body.kind == AlertKind::SilentEdit) {
+                println!("\nSee the latest change to a page with: keepword diff URL");
             }
         }
         Cmd::Anchor { cmd } => {
@@ -1265,7 +1374,7 @@ fn print_outcome(o: &Outcome) {
             println!("CHANGED since {}: {}", p.short(), c.summary);
             if let Some(d) = &c.diff {
                 println!();
-                print!("{}", d.unified);
+                print_diff(d);
             }
         }
     }

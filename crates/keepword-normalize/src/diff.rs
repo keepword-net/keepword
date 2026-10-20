@@ -139,9 +139,46 @@ pub fn diff(old: &str, new: &str) -> Option<Change> {
     })
 }
 
+/// A line's words and spaces, each marked if it changed.
+pub type Words = Vec<(bool, String)>;
+
+/// The words and spaces of two versions of a line, each marked when the
+/// other version lacks it: what changed within the line.
+pub fn words(old: &str, new: &str) -> (Words, Words) {
+    let td = TextDiff::configure()
+        .timeout(DIFF_TIMEOUT)
+        .diff_words(old, new);
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    for c in td.iter_all_changes() {
+        let w = c.value().to_string();
+        match c.tag() {
+            ChangeTag::Equal => {
+                a.push((false, w.clone()));
+                b.push((false, w));
+            }
+            ChangeTag::Delete => a.push((true, w)),
+            ChangeTag::Insert => b.push((true, w)),
+        }
+    }
+    (a, b)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn changed_words() {
+        let (a, b) = words("p: kept for 30 days", "p: kept for 3 years");
+        let marked = |v: &[(bool, String)]| -> Vec<String> {
+            v.iter()
+                .filter(|(c, _)| *c)
+                .map(|(_, w)| w.clone())
+                .collect()
+        };
+        assert_eq!(marked(&a), ["30", "days"]);
+        assert_eq!(marked(&b), ["3", "years"]);
+    }
 
     #[test]
     fn identical_is_none() {
