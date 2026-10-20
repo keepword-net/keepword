@@ -19,6 +19,11 @@ only change incompatibly in a new major version.
   stores nothing and can't forge, only withhold. Every witness relays,
   for up to `network.relay_witnesses` others (8, at most 2 per address).
   Only the witness and its relay need this version (DESIGN.md §6.9).
+- **A container image with each release**, for x86_64 and arm64:
+  `git.keepword.net/keepword/keepword:2`. It holds the release's static
+  binary, so a NAS box no longer compiles Keepword to run it.
+  `packaging/docker/compose.yaml` pulls it, and builds the checkout with
+  `--build`.
 
 ### Changed
 

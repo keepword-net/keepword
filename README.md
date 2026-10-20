@@ -234,8 +234,8 @@ sudo sh scripts/install.sh --domain witness.example.org --caddy
 The static Linux binaries of the `keepword` command (x86_64 and arm64) are
 attached to each [release](https://git.keepword.net/keepword/keepword/releases);
 changes are listed in the
-[changelog](https://keepword.net/docs/changelog/). There is also a
-container image (`Dockerfile`, `packaging/docker/compose.yaml`). Both are
+[changelog](https://keepword.net/docs/changelog/). From 2.4.0 on, releases
+also publish a container image, `git.keepword.net/keepword/keepword`. Both are
 described in [Installing a node](https://keepword.net/docs/install/). To
 start a network or join one, see
 [Starting a network](https://keepword.net/docs/network/).
