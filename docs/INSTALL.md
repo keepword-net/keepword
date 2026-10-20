@@ -6,8 +6,8 @@ There are two supported ways to run a node in production:
   downloads the latest release's static binary, and sets it up as a hardened
   system service. It supports Debian, Ubuntu, Fedora, RHEL-likes, Arch,
   openSUSE and Alpine, with systemd or OpenRC.
-- **The container image** (`Dockerfile`) is for Docker, Podman, NAS boxes and
-  Kubernetes.
+- **The container image** (`git.keepword.net/keepword/keepword`) is for
+  Docker, Podman, NAS boxes and Kubernetes.
 
 ## Installer
 
@@ -216,18 +216,24 @@ sudo sh scripts/install.sh --uninstall --purge   # deletes the key and log too
 
 ## Container
 
+Releases from 2.4.0 on publish the image for x86_64 and arm64, with the
+release's static binary in it. It is tagged with the version (`2.4.0`),
+its minor and major versions (`2.4`, `2`) and `latest`:
+
 ```sh
-docker build -t keepword .
 docker run -d --name keepword --restart unless-stopped \
     -v keepword-data:/data \
     -p 127.0.0.1:8480:8480 -p 127.0.0.1:8481:8481 \
     -e KEEPWORD_ENDPOINT=https://witness.example.org \
     -e KEEPWORD_PEERS=https://witness.one.example \
     -e KEEPWORD_BEHIND_PROXY=1 \
-    keepword
+    git.keepword.net/keepword/keepword:2
 ```
 
-Or `docker compose -f packaging/docker/compose.yaml up -d`. Settings:
+Or `docker compose -f packaging/docker/compose.yaml up -d`, which pulls
+the same image; to upgrade, `pull` and `up -d` again. To build the image
+from a checkout instead, `docker build -t keepword .` and run `keepword`,
+or add `--build` to `up`. Settings:
 
 | Variable | Meaning |
 |---|---|

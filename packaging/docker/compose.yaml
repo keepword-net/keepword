@@ -1,9 +1,11 @@
 # docker compose -f packaging/docker/compose.yaml up -d
+#
+# Pulls the release image; with --build, builds this checkout instead.
 services:
   keepword:
     build:
       context: ../..
-    image: keepword:latest
+    image: git.keepword.net/keepword/keepword:2
     restart: unless-stopped
     volumes:
       - keepword-data:/data
