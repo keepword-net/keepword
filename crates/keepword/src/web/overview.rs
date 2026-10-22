@@ -39,58 +39,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         cards.push(review_card(&ui, c)?);
     }
 
-    let body = html! {
-        div.head {
-            h1 { "Overview" }
-        }
-        @if !ui.opts.watching {
-            div.notice.warn {
-                b { "Automatic checks are off." }
-                " Keepword only checks pages when you press “Check now”. Start it with "
-                code { "keepword serve --watch" } " to check them on their schedule."
-            }
-        }
-        @if own.is_empty() {
-            (welcome(&ui, joined))
-        } @else {
-            div.stats {
-                a.stat href="/pages" {
-                    span.n { (own.len()) }
-                    span.l { "pages watched" }
-                }
-                div.stat {
-                    span.n { @if let Some(t) = last_check { (view::relative(t)) } @else { "never" } }
-                    span.l { "last check" }
-                }
-                a.stat href="#review" {
-                    span.n { (to_review) }
-                    span.l { "changes to review" }
-                }
-                a.stat href="/network" {
-                    @if joined {
-                        span.n { (peers.len()) }
-                        span.l { "witnesses known" }
-                    } @else {
-                        span.n { "Alone" }
-                        span.l { "not in the network yet" }
-                    }
-                }
-            }
-            @if failing > 0 {
-                div.notice.error {
-                    b { (failing) " " (if failing == 1 { "page" } else { "pages" }) " failed their last check." }
-                    " " a href="/pages?show=errors" { "See which" }
-                }
-            }
-            @if !joined {
-                div.notice {
-                    b { "This node works alone." }
-                    " Join the network so independent witnesses can confirm what pages said. "
-                    a href="/settings#network" { "Set it up" }
-                }
-            }
-        }
-        @if !own.is_empty() || !review.is_empty() {
+    let review_section = html! {
         section #review {
             div.section-head {
                 h2 { "To review" }
@@ -129,23 +78,80 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                 }
             }
         }
+    };
+    let side = html! {
+        @if failing > 0 {
+            div.notice.error {
+                b { (failing) " " (if failing == 1 { "page" } else { "pages" }) " failed their last check." }
+                " " a href="/pages?show=errors" { "See which" }
+            }
         }
-        @if !alerts.is_empty() {
-            section {
-                div.section-head {
-                    h2 { "Network alerts this week" }
-                    a.btn.ghost.small href="/alerts" { "All alerts" }
-                }
+        @if !joined {
+            div.notice {
+                b { "This node works alone." }
+                " Join the network so independent witnesses can confirm what pages said. "
+                a href="/settings#network" { "Set it up" }
+            }
+        }
+        div.card {
+            div.card-head {
+                h2 { "Network alerts" }
+                a.small href="/alerts" { "All" }
+            }
+            @if alerts.is_empty() {
+                p.muted.small { "None this week." }
+            } @else {
                 ul.plain {
-                    @for a in alerts.iter().take(5) {
+                    @for a in alerts.iter().take(6) {
                         li {
-                            (super::alerts::kind_badge(a.body.kind)) " "
-                            @if let Some(u) = &a.body.url { a href=(view::page_link(u)) { (view::address(u)) } " " }
-                            span.muted.small { (view::when(a.body.issued_at_ms)) }
+                            (super::alerts::kind_badge(a.body.kind))
+                            @if let Some(u) = &a.body.url { div { a href=(view::page_link(u)) { (view::address(u)) } } }
+                            div.muted.small { (view::when(a.body.issued_at_ms)) }
                         }
                     }
                 }
             }
+        }
+    };
+    let body = html! {
+        div.head {
+            h1 { "Overview" }
+        }
+        @if !ui.opts.watching {
+            div.notice.warn {
+                b { "Automatic checks are off." }
+                " Keepword only checks pages when you press “Check now”. Start it with "
+                code { "keepword serve --watch" } " to check them on their schedule."
+            }
+        }
+        @if own.is_empty() {
+            (welcome(&ui, joined))
+            @if !review.is_empty() { (review_section) }
+        } @else {
+            div.stats {
+                a.stat href="/pages" {
+                    span.n { (own.len()) }
+                    span.l { "pages watched" }
+                }
+                div.stat {
+                    span.n { @if let Some(t) = last_check { (view::relative(t)) } @else { "never" } }
+                    span.l { "last check" }
+                }
+                a.stat href="#review" {
+                    span.n { (to_review) }
+                    span.l { "changes to review" }
+                }
+                a.stat href="/network" {
+                    @if joined {
+                        span.n { (peers.len()) }
+                        span.l { "witnesses known" }
+                    } @else {
+                        span.n { "Alone" }
+                        span.l { "not in the network yet" }
+                    }
+                }
+            }
+            (view::columns(review_section, side, false))
         }
     };
     Ok(view::page(&ui, &ctx, Nav::Overview, "Overview", body))
@@ -188,7 +194,7 @@ fn review_card(ui: &Ui, c: &keepword_store::ChangeRow) -> WebResult<Markup> {
 
 /// A node watching nothing yet: what to do first.
 fn welcome(ui: &Ui, joined: bool) -> Markup {
-    html! {
+    let main = html! {
         div.card.welcome {
             h2 { "Start by watching a page" }
             p {
@@ -197,15 +203,21 @@ fn welcome(ui: &Ui, joined: bool) -> Markup {
             }
             (super::pages::add_form(ui, true))
         }
-        ol.steps {
-            li.done { "Keepword is running." }
-            li { "Add the pages you care about: terms of service, privacy policies, prices, articles." }
-            li class=[joined.then_some("done")] {
-                "Join the network, so independent witnesses back up what yours saw. "
-                @if !joined { a href="/settings#network" { "Set it up" } }
+    };
+    let side = html! {
+        div.card {
+            h2 { "Getting started" }
+            ol.steps {
+                li.done { "Keepword is running." }
+                li { "Add the pages you care about: terms of service, privacy policies, prices, articles." }
+                li class=[joined.then_some("done")] {
+                    "Join the network, so independent witnesses back up what yours saw. "
+                    @if !joined { a href="/settings#network" { "Set it up" } }
+                }
             }
         }
-    }
+    };
+    view::columns(main, side, false)
 }
 
 /// Mark one change, a page's or all as reviewed.

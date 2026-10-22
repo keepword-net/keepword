@@ -88,46 +88,62 @@ pre {
 
 /* ------------------------------------------------------------- layout */
 
-.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
-main.wrap { padding-top: 24px; padding-bottom: 40px; }
-footer.wrap { padding-bottom: 32px; }
-
-.top {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+/* The sections in a column on the left, the page beside them, using the
+   width a screen has rather than a column in its middle. */
+.app {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  min-height: 100vh;
+}
+.side {
   position: sticky;
   top: 0;
-  z-index: 10;
-}
-.bar {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 0 16px;
+  height: 100vh;
   display: flex;
-  align-items: center;
-  gap: 20px;
-  min-height: 58px;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 14px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
+  padding: 0 8px;
   font-weight: 700;
-  font-size: 17px;
+  font-size: 18px;
   color: var(--text);
   text-decoration: none;
 }
-.menu { display: flex; gap: 4px; flex: 1; overflow-x: auto; scrollbar-width: none; }
+.menu { display: flex; flex-direction: column; gap: 2px; }
 .menu a {
+  display: flex;
+  align-items: center;
+  gap: 11px;
   color: var(--muted);
   text-decoration: none;
-  padding: 7px 11px;
-  border-radius: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
   white-space: nowrap;
-  font-weight: 500;
+  font-weight: 550;
 }
 .menu a:hover { color: var(--text); background: var(--surface-2); }
-.menu a[aria-current] { color: var(--text); background: var(--accent-soft); }
+.menu a[aria-current] { color: var(--accent); background: var(--accent-soft); }
+.menu .label { flex: 1; }
+.icon { flex: none; }
+.side-foot {
+  margin-top: auto;
+  display: grid;
+  gap: 6px;
+  padding: 12px 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.side-foot .logout { margin-top: 4px; }
+.state { display: flex; align-items: center; gap: 8px; font-weight: 550; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); flex: none; }
+.dot.on { background: var(--green); }
 .count {
   display: inline-block;
   min-width: 20px;
@@ -143,21 +159,62 @@ footer.wrap { padding-bottom: 32px; }
 }
 .chips .count { background: var(--surface-2); color: var(--muted); margin-left: 4px; }
 
-@media (max-width: 720px) {
-  .bar { flex-wrap: wrap; gap: 6px 12px; padding-top: 8px; }
+.content { padding: 28px 36px 48px; max-width: 1360px; min-width: 0; }
+
+/* Two columns: the page's main one, and beside it what to know and do. */
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 28px;
+  align-items: start;
+}
+.col-side { display: grid; gap: 16px; min-width: 0; }
+.col-main > :first-child, .col-side > * { margin-top: 0; }
+.col-side > .notice { margin-bottom: 0; }
+.col-side h2 { margin-bottom: 10px; }
+.col-side .card h2 { font-size: 16px; }
+.sticky { position: sticky; top: 20px; }
+.measure { max-width: 880px; }
+
+@media (max-width: 1180px) {
+  .cols { grid-template-columns: minmax(0, 1fr); }
+  .col-side.first { order: -1; }
+  .sticky { position: static; }
+}
+
+/* On a phone the sections go across the top. */
+@media (max-width: 860px) {
+  .app { display: block; }
+  .side {
+    position: sticky;
+    z-index: 10;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 8px 16px 6px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
   .brand span { display: none; }
+  .brand { padding: 0; }
   .menu {
     order: 3;
     flex-basis: 100%;
-    display: grid;
-    grid-template-columns: repeat(5, auto);
+    flex-direction: row;
     justify-content: space-between;
-    gap: 0;
-    padding-bottom: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
-  .menu a { padding: 5px 6px; font-size: 14px; }
+  .menu a { padding: 5px 4px; font-size: 14px; font-weight: 500; gap: 0; }
+  .menu .label { flex: none; }
+  .menu .icon { display: none; }
   .menu .count { margin-left: 3px; min-width: 18px; line-height: 18px; }
-  .logout { margin-left: auto; }
+  .side-foot { margin: 0 0 0 auto; padding: 0; border: 0; }
+  .side-foot > div { display: none; }
+  .side-foot .logout { margin: 0; }
+  .content { padding: 20px 16px 40px; }
   h1 { font-size: 22px; }
 }
 

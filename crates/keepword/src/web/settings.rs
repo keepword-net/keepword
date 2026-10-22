@@ -67,117 +67,119 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         }
     };
     let body = html! {
-        div.head { h1 { "Settings" } }
-        @if pending {
-            div.notice.warn #restart {
-                b { "Saved settings take effect after a restart." }
-                @if ui.opts.supervised {
-                    " "
-                    (view::button(&ui, "/settings/restart", &[], "Restart now", "primary small",
-                        Some("Restart Keepword now? It is back in a few seconds.")))
-                } @else {
-                    " Restart Keepword to apply them."
+        div.measure {
+            div.head { h1 { "Settings" } }
+            @if pending {
+                div.notice.warn #restart {
+                    b { "Saved settings take effect after a restart." }
+                    @if ui.opts.supervised {
+                        " "
+                        (view::button(&ui, "/settings/restart", &[], "Restart now", "primary small",
+                            Some("Restart Keepword now? It is back in a few seconds.")))
+                    } @else {
+                        " Restart Keepword to apply them."
+                    }
                 }
             }
-        }
-        form.stack.settings method="post" action="/settings" {
-            (view::csrf(&ui))
-            section.card #location {
-                h2 { "Where this node is" }
-                p.muted.small {
-                    "The network spreads witnesses across countries and internet providers, so that "
-                    "no single one can fake what a page said. Peers confirm where a node is from "
-                    "where it connects; this is what it says about itself."
-                }
-                @if let Some(l) = &located {
-                    p.small { "Peers see this node in " b { (l.to_string()) } "." }
-                }
-                div.row-fields {
-                    label { "Country code"
-                        input type="text" name="country" value=[saved.vantage.country.as_deref()]
-                            maxlength="2" placeholder="DE" autocomplete="off" pattern="[A-Za-z]{2}";
+            form.stack.settings method="post" action="/settings" {
+                (view::csrf(&ui))
+                section.card #location {
+                    h2 { "Where this node is" }
+                    p.muted.small {
+                        "The network spreads witnesses across countries and internet providers, so that "
+                        "no single one can fake what a page said. Peers confirm where a node is from "
+                        "where it connects; this is what it says about itself."
                     }
-                    label { "Network number (ASN)"
-                        input type="text" name="asn" inputmode="numeric" value=[saved.vantage.asn]
-                            placeholder="3320" autocomplete="off";
+                    @if let Some(l) = &located {
+                        p.small { "Peers see this node in " b { (l.to_string()) } "." }
                     }
-                }
-                p.muted.small { "The ASN is your internet provider's number; sites like bgp.he.net show it for your address. Leave it empty if unsure." }
-            }
-            section.card #network {
-                h2 { "Joining the network" }
-                @if let Some(var) = mode_env { (locked(var)) }
-                @if mode.is_empty() {
-                    p.small { "Now: this node contacts the witnesses listed below without being reachable itself." }
-                }
-                div.choices {
-                    (radio("alone", "Work alone", "Keep records on this node only. Nobody else confirms what it saw."))
-                    (radio("relay", "At home, behind a router", "Join through another witness that relays for this one. Nothing to set up on the router."))
-                    (radio("endpoint", "On a server with a public address", "Peers connect to this node's API at the address below (put HTTPS in front of it)."))
-                }
-                label { "Public address of this node's API"
-                    input type="url" name="endpoint" value=[net.endpoint.as_deref()]
-                        placeholder="https://witness.example.org" disabled[mode_env.is_some()];
-                }
-                details {
-                    summary { "More network settings" }
-                    @if let Some(var) = from_env("KEEPWORD_SEEDS") { (locked(var)) }
-                    label.check {
-                        input type="checkbox" name="seeds" checked[net.seeds] disabled[from_env("KEEPWORD_SEEDS").is_some()];
-                        " Join through Keepword's public seed witnesses"
+                    div.row-fields {
+                        label { "Country code"
+                            input type="text" name="country" value=[saved.vantage.country.as_deref()]
+                                maxlength="2" placeholder="DE" autocomplete="off" pattern="[A-Za-z]{2}";
+                        }
+                        label { "Network number (ASN)"
+                            input type="text" name="asn" inputmode="numeric" value=[saved.vantage.asn]
+                                placeholder="3320" autocomplete="off";
+                        }
                     }
-                    @if let Some(var) = from_env("KEEPWORD_PEERS") { (locked(var)) }
-                    label { "Other witnesses to join through, one address per line"
-                        textarea name="peers" rows="3" disabled[from_env("KEEPWORD_PEERS").is_some()] {
-                            (net.peers.join("\n"))
+                    p.muted.small { "The ASN is your internet provider's number; sites like bgp.he.net show it for your address. Leave it empty if unsure." }
+                }
+                section.card #network {
+                    h2 { "Joining the network" }
+                    @if let Some(var) = mode_env { (locked(var)) }
+                    @if mode.is_empty() {
+                        p.small { "Now: this node contacts the witnesses listed below without being reachable itself." }
+                    }
+                    div.choices {
+                        (radio("alone", "Work alone", "Keep records on this node only. Nobody else confirms what it saw."))
+                        (radio("relay", "At home, behind a router", "Join through another witness that relays for this one. Nothing to set up on the router."))
+                        (radio("endpoint", "On a server with a public address", "Peers connect to this node's API at the address below (put HTTPS in front of it)."))
+                    }
+                    label { "Public address of this node's API"
+                        input type="url" name="endpoint" value=[net.endpoint.as_deref()]
+                            placeholder="https://witness.example.org" disabled[mode_env.is_some()];
+                    }
+                    details {
+                        summary { "More network settings" }
+                        @if let Some(var) = from_env("KEEPWORD_SEEDS") { (locked(var)) }
+                        label.check {
+                            input type="checkbox" name="seeds" checked[net.seeds] disabled[from_env("KEEPWORD_SEEDS").is_some()];
+                            " Join through Keepword's public seed witnesses"
+                        }
+                        @if let Some(var) = from_env("KEEPWORD_PEERS") { (locked(var)) }
+                        label { "Other witnesses to join through, one address per line"
+                            textarea name="peers" rows="3" disabled[from_env("KEEPWORD_PEERS").is_some()] {
+                                (net.peers.join("\n"))
+                            }
                         }
                     }
                 }
-            }
-            section.card #content {
-                h2 { "What to keep" }
-                p.muted.small { "The signed records are always kept; they hold no page content. This is about the pages' content." }
-                div.choices {
-                    (retain(Retain::Normalized, "normalized", "The text (recommended)", "Enough to show what changed. Small."))
-                    (retain(Retain::Full, "full", "The text and the raw pages", "Full evidence anyone can re-check byte for byte. Takes the most space."))
-                    (retain(Retain::None, "none", "Nothing", "Changes are detected but can't be shown. For pages you may not store."))
-                }
-            }
-            section.card #capture {
-                h2 { "Capturing" }
-                div.row-fields {
-                    label { "Give up on a page after (seconds)"
-                        input type="number" name="timeout" min="5" max="300" value=(saved.capture.timeout_secs);
+                section.card #content {
+                    h2 { "What to keep" }
+                    p.muted.small { "The signed records are always kept; they hold no page content. This is about the pages' content." }
+                    div.choices {
+                        (retain(Retain::Normalized, "normalized", "The text (recommended)", "Enough to show what changed. Small."))
+                        (retain(Retain::Full, "full", "The text and the raw pages", "Full evidence anyone can re-check byte for byte. Takes the most space."))
+                        (retain(Retain::None, "none", "Nothing", "Changes are detected but can't be shown. For pages you may not store."))
                     }
                 }
-                label { "Browser name sent to sites (empty for Keepword's own)"
-                    input type="text" name="user_agent" value=[saved.capture.user_agent.as_deref()] autocomplete="off";
+                section.card #capture {
+                    h2 { "Capturing" }
+                    div.row-fields {
+                        label { "Give up on a page after (seconds)"
+                            input type="number" name="timeout" min="5" max="300" value=(saved.capture.timeout_secs);
+                        }
+                    }
+                    label { "Browser name sent to sites (empty for Keepword's own)"
+                        input type="text" name="user_agent" value=[saved.capture.user_agent.as_deref()] autocomplete="off";
+                    }
+                }
+                div.actions { button.btn.primary type="submit" { "Save settings" } }
+            }
+            section.card #password {
+                h2 { "Password" }
+                (password_section(&ui))
+            }
+            details.card #file {
+                summary { b { "Edit keepword.toml" } span.muted.small { " (every setting, for experts)" } }
+                p.muted.small {
+                    "The whole configuration. It's checked before it's saved; see docs/keepword.example.toml for what each setting does."
+                }
+                form.stack method="post" action="/settings/file" {
+                    (view::csrf(&ui))
+                    textarea.mono name="toml" rows="20" spellcheck="false" { (file) }
+                    div { button.btn type="submit" { "Save file" } }
                 }
             }
-            div.actions { button.btn.primary type="submit" { "Save settings" } }
-        }
-        section.card #password {
-            h2 { "Password" }
-            (password_section(&ui))
-        }
-        details.card #file {
-            summary { b { "Edit keepword.toml" } span.muted.small { " (every setting, for experts)" } }
-            p.muted.small {
-                "The whole configuration. It's checked before it's saved; see docs/keepword.example.toml for what each setting does."
-            }
-            form.stack method="post" action="/settings/file" {
-                (view::csrf(&ui))
-                textarea.mono name="toml" rows="20" spellcheck="false" { (file) }
-                div { button.btn type="submit" { "Save file" } }
-            }
-        }
-        section.card {
-            h2 { "About this node" }
-            dl.facts {
-                dt { "Version" } dd { "Keepword " (env!("CARGO_PKG_VERSION")) }
-                dt { "Data folder" } dd.mono.break { (node.dir.display()) }
-                dt { "Witness key" } dd.mono.break { (node.key.public()) }
-                dt { "Automatic checks" } dd { @if ui.opts.watching { "on" } @else { "off (start with --watch)" } }
+            section.card {
+                h2 { "About this node" }
+                dl.facts {
+                    dt { "Version" } dd { "Keepword " (env!("CARGO_PKG_VERSION")) }
+                    dt { "Data folder" } dd.mono.break { (node.dir.display()) }
+                    dt { "Witness key" } dd.mono.break { (node.key.public()) }
+                    dt { "Automatic checks" } dd { @if ui.opts.watching { "on" } @else { "off (start with --watch)" } }
+                }
             }
         }
     };

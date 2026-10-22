@@ -101,11 +101,32 @@ fn flash_box(flash: &Option<(String, String)>) -> Markup {
 }
 
 /// A page of the UI.
+/// The sections' icons: 24-unit line drawings in the text's colour.
+fn icon(nav: Nav) -> Markup {
+    let d = match nav {
+        Nav::Overview => "M4 13h4l2 3h4l2-3h4M4 13l2.5-7h11l2.5 7v6H4z",
+        Nav::Pages => "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
+        Nav::Network => {
+            "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM3.5 9h17M3.5 15h17M12 3c-3 3.5-3 14.5 0 18M12 3c3 3.5 3 14.5 0 18"
+        }
+        Nav::Alerts => "M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4",
+        Nav::Settings => "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
+    };
+    html! {
+        svg.icon viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" {
+            path d=(d) {}
+        }
+    }
+}
+
+/// A page of the UI: the sections on the left, the page beside them.
 pub(super) fn page(ui: &Ui, ctx: &Ctx, nav: Nav, title: &str, body: Markup) -> Response {
     let item = |n: Nav, href: &str, label: &str, count: u64| {
         html! {
             a href=(href) aria-current=[(n == nav).then_some("page")] {
-                (label)
+                (icon(n))
+                span.label { (label) }
                 @if count > 0 { span.count { (count) } }
             }
         }
@@ -114,19 +135,33 @@ pub(super) fn page(ui: &Ui, ctx: &Ctx, nav: Nav, title: &str, body: Markup) -> R
         (DOCTYPE)
         html lang="en" {
             (head(title))
-            body {
-                header.top {
-                    div.bar {
-                        a.brand href="/" {
-                            img src="/favicon.svg" alt="" width="28" height="28";
-                            span { "Keepword" }
+            body.app {
+                aside.side {
+                    a.brand href="/" {
+                        img src="/favicon.svg" alt="" width="30" height="30";
+                        span { "Keepword" }
+                    }
+                    nav.menu aria-label="Sections" {
+                        (item(Nav::Overview, "/", "Overview", ctx.to_review))
+                        (item(Nav::Pages, "/pages", "Pages", 0))
+                        (item(Nav::Network, "/network", "Network", 0))
+                        (item(Nav::Alerts, "/alerts", "Alerts", 0))
+                        (item(Nav::Settings, "/settings", "Settings", 0))
+                    }
+                    div.side-foot {
+                        div.state {
+                            @if ui.opts.watching {
+                                span.dot.on {} "Checking pages"
+                            } @else {
+                                span.dot {} "Automatic checks off"
+                            }
                         }
-                        nav.menu {
-                            (item(Nav::Overview, "/", "Overview", ctx.to_review))
-                            (item(Nav::Pages, "/pages", "Pages", 0))
-                            (item(Nav::Network, "/network", "Network", 0))
-                            (item(Nav::Alerts, "/alerts", "Alerts", 0))
-                            (item(Nav::Settings, "/settings", "Settings", 0))
+                        div.muted.small {
+                            "Witness " span.mono { (ui.node.key.public().short()) }
+                        }
+                        div.muted.small {
+                            "Keepword " (VERSION) " · "
+                            a href=(env!("CARGO_PKG_REPOSITORY")) rel="noreferrer" { "source" }
                         }
                         @if ui.auth.mode() == UiAuth::Password {
                             form.logout method="post" action="/logout" {
@@ -136,19 +171,26 @@ pub(super) fn page(ui: &Ui, ctx: &Ctx, nav: Nav, title: &str, body: Markup) -> R
                         }
                     }
                 }
-                main.wrap {
+                main.content {
                     (flash_box(&ctx.flash))
                     (body)
-                }
-                footer.wrap.muted.small {
-                    "Keepword " (VERSION) " · witness " span.mono { (ui.node.key.public().short()) }
-                    " · free software under the AGPL-3.0 · "
-                    a href=(env!("CARGO_PKG_REPOSITORY")) rel="noreferrer" { "source code" }
                 }
             }
         }
     };
     Html(markup.into_string()).into_response()
+}
+
+/// A page in two columns on a wide screen: the main one, and beside it
+/// what to know and do about it. On a narrow one the side goes below the
+/// main column, or above it with `side_first`, when it says what to do.
+pub(super) fn columns(main: Markup, side: Markup, side_first: bool) -> Markup {
+    html! {
+        div.cols {
+            div.col-main { (main) }
+            aside.col-side.first[side_first] { (side) }
+        }
+    }
 }
 
 /// A page outside the UI's navigation: an error, a refusal.

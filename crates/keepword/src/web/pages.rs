@@ -356,18 +356,20 @@ pub(super) async fn detail(
     let newest = changes.iter().map(|c| c.seq).max().unwrap_or(0);
     let here = view::page_link(&url);
     let u = url.as_str();
-    let body = html! {
-        nav.crumbs { a href="/pages" { "← Pages" } }
-        div.head {
-            div {
-                h1 { @if let Some(t) = &title { (t) } @else { (view::address(u)) } }
-                @if title.is_some() { div.sub { (view::address(u)) } }
-            }
-            a.btn.ghost.small href=(u) rel="noreferrer noopener" target="_blank" { "Open the live page ↗" }
-        }
+    let side = html! {
         div.card {
             (status(&ui, u, watch.as_ref(), latest.map(|r| r.signed.attestation.fetched_at_ms)))
         }
+        section {
+            h2 { "What other witnesses saw" }
+            (verdict_view(&verdict))
+        }
+        details.card {
+            summary { "Ask the network to watch this page" }
+            (super::network::request_form(&ui, Some(u), watch.as_ref().map_or(3_600, |w| w.every_secs)))
+        }
+    };
+    let main = html! {
         section {
             div.section-head {
                 h2 { "Changes" }
@@ -377,14 +379,6 @@ pub(super) async fn detail(
                 }
             }
             (super::change::history(&ui, u, &changes))
-        }
-        section {
-            h2 { "What other witnesses saw" }
-            (verdict_view(&verdict))
-            details.card.inline-card {
-                summary { "Ask the network to watch this page" }
-                (super::network::request_form(&ui, Some(u), watch.as_ref().map_or(3_600, |w| w.every_secs)))
-            }
         }
         section {
             div.section-head {
@@ -428,6 +422,17 @@ pub(super) async fn detail(
                 div { button.btn.danger type="submit" { "Delete content" } }
             }
         }
+    };
+    let body = html! {
+        nav.crumbs { a href="/pages" { "← Pages" } }
+        div.head {
+            div {
+                h1 { @if let Some(t) = &title { (t) } @else { (view::address(u)) } }
+                @if title.is_some() { div.sub { (view::address(u)) } }
+            }
+            a.btn.ghost.small href=(u) rel="noreferrer noopener" target="_blank" { "Open the live page ↗" }
+        }
+        (view::columns(main, side, true))
     };
     Ok(view::page(
         &ui,

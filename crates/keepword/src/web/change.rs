@@ -80,9 +80,8 @@ pub(super) async fn page(
     let here = format!("/change/{seq}");
     let mode = q.get("view").map_or("", String::as_str);
     let title = l.as_ref().and_then(|l| l.title.as_deref());
-    let body = html! {
-        (heading(&row.url, title))
-        div.card {
+    let summary = html! {
+        div.card.sticky {
             div.card-head {
                 div.tags {
                     (view::change_badge(row.silent, &row.summary))
@@ -106,7 +105,13 @@ pub(super) async fn page(
                 @if let Some(s) = older { a.btn.ghost.small href={ "/change/" (s) } { "Older change →" } }
             }
         }
-        @if let Some(l) = &l { (body(&here, mode, l)) }
+    };
+    let body = html! {
+        (heading(&row.url, title))
+        @match &l {
+            Some(l) => { (view::columns(what_changed(&here, mode, l), summary, true)) }
+            None => { (summary) }
+        }
     };
     Ok(view::page(
         &ui,
@@ -142,13 +147,17 @@ pub(super) async fn diff(
         .map(|c| crate::diff_summary(&l.from.signed.attestation, &l.to.signed.attestation, c));
     let body = html! {
         (heading(&url, l.title.as_deref()))
-        @if let (Some(c), Some(s)) = (&l.change, &summary) {
-            div.card {
-                div.tags { (view::change_badge(c.is_silent(), s)) (view::line_counts(c.added as u64, c.removed as u64)) }
-                (explain(s, c.is_silent(), &l))
+        @match (&l.change, &summary) {
+            (Some(c), Some(s)) => {
+                (view::columns(what_changed(&here, mode, &l), html! {
+                    div.card.sticky {
+                        div.tags { (view::change_badge(c.is_silent(), s)) (view::line_counts(c.added as u64, c.removed as u64)) }
+                        (explain(s, c.is_silent(), &l))
+                    }
+                }, true))
             }
+            _ => { (what_changed(&here, mode, &l)) }
         }
-        (body(&here, mode, &l))
     };
     Ok(view::page(&ui, &ctx, Nav::Pages, "Compare captures", body))
 }
@@ -202,7 +211,7 @@ fn explain(summary: &str, silent: bool, l: &Loaded) -> Markup {
 }
 
 /// The change itself, in the view asked for.
-fn body(here: &str, mode: &str, l: &Loaded) -> Markup {
+fn what_changed(here: &str, mode: &str, l: &Loaded) -> Markup {
     let sep = if here.contains('?') { '&' } else { '?' };
     let tab = |m: &str, label: &str| {
         let href = if m.is_empty() {
