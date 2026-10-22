@@ -357,6 +357,7 @@ impl Node {
             added: diff.map_or(0, |d| d.added as u64),
             removed: diff.map_or(0, |d| d.removed as u64),
             summary: summary.to_string(),
+            reviewed_at: None,
         })?;
         Ok(())
     }

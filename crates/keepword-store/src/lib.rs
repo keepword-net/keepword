@@ -34,7 +34,7 @@ pub enum StoreError {
 
 pub type Result<T> = std::result::Result<T, StoreError>;
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 const SCHEMA: &str = r#"
 CREATE TABLE attestations (
@@ -85,6 +85,11 @@ CREATE TABLE changes (
 CREATE INDEX changes_url ON changes(url, detected_at);
 "#;
 
+/// When someone marked each change as reviewed in the web UI.
+const SCHEMA_V6: &str = r#"
+ALTER TABLE changes ADD COLUMN reviewed_at INTEGER;
+"#;
+
 /// A stored attestation with its position in the log.
 #[derive(Clone, Debug, Serialize)]
 pub struct Record {
@@ -118,6 +123,8 @@ pub struct ChangeRow {
     pub added: u64,
     pub removed: u64,
     pub summary: String,
+    /// When it was marked as reviewed in the web UI.
+    pub reviewed_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -128,6 +135,9 @@ pub struct UrlSummary {
     pub last_capture: i64,
     pub changes: u64,
     pub silent_changes: u64,
+    /// Changes not reviewed yet.
+    pub to_review: u64,
+    pub last_change: Option<i64>,
 }
 
 pub struct Store {
@@ -159,7 +169,7 @@ impl Store {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         match v {
-            0..=4 => {
+            0..=5 => {
                 let tx = conn.unchecked_transaction()?;
                 if v == 0 {
                     tx.execute_batch(SCHEMA)?;
@@ -173,7 +183,10 @@ impl Store {
                 if v <= 3 {
                     tx.execute_batch(net::SCHEMA_V4)?;
                 }
-                tx.execute_batch(net::SCHEMA_V5)?;
+                if v <= 4 {
+                    tx.execute_batch(net::SCHEMA_V5)?;
+                }
+                tx.execute_batch(SCHEMA_V6)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
@@ -476,7 +489,9 @@ impl Store {
         let mut st = db.prepare(
             "SELECT a.url, COUNT(*), COUNT(DISTINCT a.comparison), MAX(a.fetched_at),
                     (SELECT COUNT(*) FROM changes c WHERE c.url = a.url),
-                    (SELECT COUNT(*) FROM changes c WHERE c.url = a.url AND c.silent = 1)
+                    (SELECT COUNT(*) FROM changes c WHERE c.url = a.url AND c.silent = 1),
+                    (SELECT COUNT(*) FROM changes c WHERE c.url = a.url AND c.reviewed_at IS NULL),
+                    (SELECT MAX(detected_at) FROM changes c WHERE c.url = a.url)
              FROM attestations a GROUP BY a.url ORDER BY MAX(a.fetched_at) DESC",
         )?;
         let rows = st.query_map([], |r| {
@@ -487,6 +502,8 @@ impl Store {
                 last_capture: r.get(3)?,
                 changes: r.get::<_, i64>(4)? as u64,
                 silent_changes: r.get::<_, i64>(5)? as u64,
+                to_review: r.get::<_, i64>(6)? as u64,
+                last_change: r.get(7)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -512,12 +529,51 @@ impl Store {
     }
 
     pub fn changes(&self, url: Option<&str>, limit: u32) -> Result<Vec<ChangeRow>> {
-        let db = self.db();
-        let mut st = db.prepare(
-            "SELECT seq, url, from_id, to_id, detected_at, silent, added, removed, summary FROM changes
-             WHERE (?1 IS NULL OR url = ?1) ORDER BY detected_at DESC, seq DESC LIMIT ?2",
+        self.query_changes(
+            "WHERE (?1 IS NULL OR url = ?1) ORDER BY detected_at DESC, seq DESC LIMIT ?2",
+            params![url, limit],
+        )
+    }
+
+    pub fn change(&self, seq: i64) -> Result<Option<ChangeRow>> {
+        Ok(self.query_changes("WHERE seq = ?1", [seq])?.pop())
+    }
+
+    /// Changes nobody has marked as reviewed, newest first.
+    pub fn changes_to_review(&self, limit: u32) -> Result<Vec<ChangeRow>> {
+        self.query_changes(
+            "WHERE reviewed_at IS NULL ORDER BY detected_at DESC, seq DESC LIMIT ?1",
+            [limit],
+        )
+    }
+
+    pub fn changes_to_review_count(&self) -> Result<u64> {
+        let n: i64 = self.db().query_row(
+            "SELECT COUNT(*) FROM changes WHERE reviewed_at IS NULL",
+            [],
+            |r| r.get(0),
         )?;
-        let rows = st.query_map(params![url, limit], |r| {
+        Ok(n as u64)
+    }
+
+    /// Mark changes as reviewed: the one numbered `seq`, else all of
+    /// `url`'s, else all. Returns how many weren't reviewed before.
+    pub fn mark_reviewed(&self, seq: Option<i64>, url: Option<&str>, at_ms: i64) -> Result<usize> {
+        Ok(self.db().execute(
+            "UPDATE changes SET reviewed_at = ?3
+             WHERE reviewed_at IS NULL AND (?1 IS NULL OR seq = ?1) AND (?2 IS NULL OR url = ?2)",
+            params![seq, url, at_ms],
+        )?)
+    }
+
+    fn query_changes(&self, filter: &str, p: impl rusqlite::Params) -> Result<Vec<ChangeRow>> {
+        let db = self.db();
+        let mut st = db.prepare(&format!(
+            "SELECT seq, url, from_id, to_id, detected_at, silent, added, removed, summary,
+                    reviewed_at
+             FROM changes {filter}"
+        ))?;
+        let rows = st.query_map(p, |r| {
             Ok(ChangeRow {
                 seq: r.get(0)?,
                 url: r.get(1)?,
@@ -528,6 +584,7 @@ impl Store {
                 added: r.get::<_, i64>(6)? as u64,
                 removed: r.get::<_, i64>(7)? as u64,
                 summary: r.get(8)?,
+                reviewed_at: r.get(9)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -803,6 +860,65 @@ mod tests {
         assert!(s.peers().unwrap().is_empty());
         assert!(!s.peer_evict_one(0).unwrap());
         assert_eq!(s.prune(0, &net::Retention::default()).unwrap(), 0);
+    }
+
+    #[test]
+    fn changes_are_reviewed_one_page_or_all_at_once() {
+        let t = tempfile::tempdir().unwrap();
+        let s = Store::open(t.path()).unwrap();
+        let change = |url: &str, at| ChangeRow {
+            seq: 0,
+            url: url.into(),
+            from_id: Digest::of(b"a"),
+            to_id: Digest::of(b"b"),
+            detected_at: at,
+            silent: true,
+            added: 1,
+            removed: 1,
+            summary: "silent edit: +1 -1 lines".into(),
+            reviewed_at: None,
+        };
+        let a = "https://a.example/";
+        let first = s.record_change(&change(a, 1)).unwrap();
+        s.record_change(&change(a, 2)).unwrap();
+        s.record_change(&change("https://b.example/", 3)).unwrap();
+        assert_eq!(s.changes_to_review_count().unwrap(), 3);
+        assert_eq!(s.mark_reviewed(Some(first), None, 10).unwrap(), 1);
+        assert_eq!(s.change(first).unwrap().unwrap().reviewed_at, Some(10));
+        assert_eq!(s.mark_reviewed(Some(first), None, 11).unwrap(), 0);
+        assert_eq!(s.mark_reviewed(None, Some(a), 12).unwrap(), 1);
+        let left = s.changes_to_review(10).unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].url, "https://b.example/");
+        assert_eq!(s.mark_reviewed(None, None, 13).unwrap(), 1);
+        assert_eq!(s.changes_to_review_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn migrates_v5_databases() {
+        let t = tempfile::tempdir().unwrap();
+        {
+            let c = Connection::open(t.path().join("index.sqlite")).unwrap();
+            c.execute_batch(SCHEMA).unwrap();
+            for s in [
+                net::SCHEMA_V2,
+                net::SCHEMA_V3,
+                net::SCHEMA_V4,
+                net::SCHEMA_V5,
+            ] {
+                c.execute_batch(s).unwrap();
+            }
+            c.pragma_update(None, "user_version", 5).unwrap();
+            c.execute(
+                "INSERT INTO changes (url, from_id, to_id, detected_at, silent, added, removed, summary)
+                 VALUES ('https://a.example/', x'00', x'00', 1, 1, 1, 1, 's')",
+                [],
+            )
+            .unwrap();
+        }
+        let s = Store::open(t.path()).unwrap();
+        // Changes from before stay to be reviewed.
+        assert_eq!(s.changes_to_review_count().unwrap(), 1);
     }
 
     #[test]
