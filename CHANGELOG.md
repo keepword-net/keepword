@@ -21,9 +21,18 @@ only change incompatibly in a new major version.
   forgets witnesses and syncs. Settings has the common ones as a form,
   all of `keepword.toml` for the rest, the password, and a restart.
   The CLI does all of this as before.
+- **A node renews its network requests for the pages it still watches**,
+  with a quarter of their time left, for as long again: a page asked to
+  the network when it was added stays watched by other witnesses as long
+  as by this node. A request for a page not watched here still runs out.
 
 ### Changed
 
+- **Adding pages in the web UI asks the network to watch them too, by
+  default**, on a node in the network. The form says their addresses go
+  to every witness; an address with a secret in its query (`token`,
+  `key`, `session`, …) is only watched here, and past the 50 requests the
+  network takes from a node the rest aren't asked.
 - **Normalized text is `keepword-norm/5`**, for the fixes below. Captures
   only compare when they were normalized the same way: until every
   witness upgrades, verdicts and rechecks draw on fewer witnesses, and a

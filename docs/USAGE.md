@@ -136,7 +136,8 @@ way, so every node needs an IP-to-ASN table.
 
 `keepword serve` runs a web UI that does what most people need without
 the CLI: the changes to review, with what changed marked in the page's
-own words; adding pages (several at once) and how often they're checked;
+own words; adding pages (several at once, asking the network to watch
+them too unless you untick it) and how often they're checked;
 each page's history, what other witnesses saw, its evidence bundles, and
 deleting its content; asking the network to watch a page; the witnesses
 this node knows; and the settings, with a restart to apply them where a

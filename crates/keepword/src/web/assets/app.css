@@ -427,6 +427,7 @@ form.inline select { width: auto; padding: 5px 9px; font-size: 13px; }
 .row-fields > label { flex: 1 1 200px; }
 label.check { display: flex; gap: 8px; align-items: center; font-weight: 450; }
 label.check input { width: auto; margin: 0; }
+.hint { margin: 2px 0 0 26px; }
 .choices { display: grid; gap: 8px; margin-bottom: 12px; }
 label.choice {
   display: flex;

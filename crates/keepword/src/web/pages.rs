@@ -19,8 +19,52 @@ use crate::consensus::VerdictView;
 /// How long a request to the network lasts when added with pages.
 pub(super) const REQUEST_DAYS: u64 = 7;
 
+/// This node's network requests in use, and how many the network takes
+/// from one node.
+pub(super) fn requests_in_use(ui: &Ui) -> (u64, u64) {
+    let mine = ui
+        .node
+        .store
+        .requests_by(&ui.node.key.public(), now_ms())
+        .map_or(0, |r| r.len() as u64);
+    (mine, ui.node.config.network.max_requests_per_requester)
+}
+
+/// Query parameters that carry a secret. A page behind one isn't public,
+/// and asking the network would hand the secret to every witness.
+const SECRET_PARAMS: &[&str] = &[
+    "token",
+    "auth",
+    "key",
+    "apikey",
+    "sig",
+    "signature",
+    "session",
+    "sessionid",
+    "sid",
+    "secret",
+    "password",
+    "pass",
+    "code",
+    "ticket",
+];
+
+/// Whether an address looks like it holds a secret. Only its query is
+/// looked at: a secret in a path can't be told from a page's name.
+fn looks_private(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| {
+        u.query_pairs().any(|(k, _)| {
+            let k = k.to_ascii_lowercase();
+            SECRET_PARAMS
+                .iter()
+                .any(|s| k == *s || k.ends_with(&format!("_{s}")) || k.ends_with(&format!("-{s}")))
+        })
+    })
+}
+
 /// The form that adds pages: several at once, one per line.
 pub(super) fn add_form(ui: &Ui, open: bool) -> Markup {
+    let (in_use, cap) = requests_in_use(ui);
     html! {
         form.stack.add method="post" action="/pages/add" {
             (view::csrf(ui))
@@ -39,9 +83,17 @@ pub(super) fn add_form(ui: &Ui, open: bool) -> Markup {
                 }
             }
             @if super::joined(&ui.node) {
-                label.check {
-                    input type="checkbox" name="network";
-                    " Also ask the network to watch them for " (REQUEST_DAYS) " days, so independent witnesses check them too"
+                div {
+                    label.check {
+                        input type="checkbox" name="network" checked[in_use < cap] disabled[in_use >= cap];
+                        " Also ask the network to watch them, so independent witnesses check them too"
+                    }
+                    p.muted.small.hint {
+                        "Their addresses go to every witness: leave this off for pages that aren't public. "
+                        "Asked again while you watch them. "
+                        (in_use) " of " (cap) " network requests in use"
+                        @if in_use >= cap { ", none left until one runs out or is withdrawn" } "."
+                    }
                 }
             }
             div { button.btn.primary type="submit" data-busy="Adding…" { "Add pages" } }
@@ -260,16 +312,33 @@ pub(super) async fn add(State(ui): State<Ui>, form: Post) -> WebResult<Response>
     }
     let now = now_ms();
     let ask = form.on("network") && super::joined(&ui.node);
-    let mut asked = 0;
-    let mut failed = Vec::new();
+    let (in_use, cap) = requests_in_use(&ui);
+    let mut room = cap.saturating_sub(in_use);
+    let (mut asked, mut over) = (0, 0);
+    let (mut private, mut failed) = (Vec::new(), Vec::new());
     for u in &urls {
         ui.node.store.watch_add(u, every, render, now)?;
-        if ask {
-            let ms = (REQUEST_DAYS * 86_400_000) as i64;
-            match ui.node.replace_request(u, every, ms, render) {
-                Ok(_) => asked += 1,
-                Err(e) => failed.push(format!("{u}: {e:#}")),
+        if !ask {
+            continue;
+        }
+        if looks_private(u) {
+            private.push(u.as_str());
+            continue;
+        }
+        if room == 0 {
+            over += 1;
+            continue;
+        }
+        let ms = (REQUEST_DAYS * 86_400_000) as i64;
+        match ui.node.replace_request(u, every, ms, render) {
+            // Asking again for a page replaces the request: no more in use.
+            Ok((_, replaced)) => {
+                asked += 1;
+                if replaced == 0 {
+                    room -= 1;
+                }
             }
+            Err(e) => failed.push(format!("{u}: {e:#}")),
         }
     }
     let mut msg = match urls.len() {
@@ -281,6 +350,18 @@ pub(super) async fn add(State(ui): State<Ui>, form: Post) -> WebResult<Response>
     }
     if asked > 0 {
         msg.push_str(" The network hears about them at the next sync.");
+    }
+    if !private.is_empty() {
+        msg.push_str(&format!(
+            " Not asked the network about what looks private (a secret in its address): {}.",
+            private.join(", ")
+        ));
+    }
+    if over > 0 {
+        msg.push_str(&format!(
+            " {over} more weren't asked: this node has {cap} network requests in use, \
+             all the network takes from one node."
+        ));
     }
     if !bad.is_empty() {
         msg.push_str(&format!(
@@ -666,6 +747,26 @@ fn verdict_view(v: &VerdictView) -> Markup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_looking_addresses() {
+        for private in [
+            "https://a.example/doc?token=x",
+            "https://a.example/doc?api_key=x",
+            "https://a.example/s?Session=1&lang=de",
+            "https://a.example/invite?promo-code=x",
+        ] {
+            assert!(looks_private(private), "{private}");
+        }
+        for public in [
+            "https://a.example/terms",
+            "https://a.example/terms?lang=de&v=2",
+            "https://a.example/keys-and-tokens",
+            "https://a.example/p?monkey=1",
+        ] {
+            assert!(!looks_private(public), "{public}");
+        }
+    }
 
     #[test]
     fn pasted_addresses() {

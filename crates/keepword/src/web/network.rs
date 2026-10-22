@@ -93,12 +93,14 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         .filter(|r| r.body.requester != node.key.public())
         .count();
     let joined = super::joined(node);
-    let for_network = node
-        .store
-        .watches()?
+    let watches = node.store.watches()?;
+    let for_network = watches.iter().filter(|w| w.request_id.is_some()).count();
+    // Pages watched here: this node renews its requests for them.
+    let watched: std::collections::HashSet<&str> = watches
         .iter()
-        .filter(|w| w.request_id.is_some())
-        .count();
+        .filter(|w| w.request_id.is_none())
+        .map(|w| w.url.as_str())
+        .collect();
     // What `keepword net status` warns about, but that federation is off:
     // "Reachable" says so, with what to do.
     let warnings: Vec<String> = crate::status_warnings(node, me.is_some())?
@@ -161,7 +163,10 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             }
         }
         section #request {
-            h2 { "Pages you asked the network to watch" }
+            div.section-head {
+                h2 { "Pages you asked the network to watch" }
+                span.muted.small { (mine.len()) " of " (node.config.network.max_requests_per_requester) " in use" }
+            }
             @if mine.is_empty() {
                 p.muted { "None yet." }
             } @else {
@@ -170,7 +175,10 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                         li.row {
                             a.grow href=(view::page_link(&r.body.url)) {
                                 (view::address(&r.body.url))
-                                div.sub { (view::every(r.body.every_secs)) " · until " (view::absolute(r.body.expires_at_ms)) }
+                                div.sub {
+                                    (view::every(r.body.every_secs)) " · until " (view::absolute(r.body.expires_at_ms))
+                                    @if watched.contains(r.body.url.as_str()) { " · asked again while you watch it" }
+                                }
                             }
                             (view::button(&ui, "/network/withdraw", &[("u", &r.body.url)], "Withdraw", "ghost small",
                                 Some("Withdraw this request? Witnesses stop after their next sync.")))
