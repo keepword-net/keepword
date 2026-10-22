@@ -300,22 +300,15 @@ pub(super) async fn save(State(ui): State<Ui>, form: Post) -> WebResult<Response
         return Ok(flash("/settings", "error", format!("Not saved: {e:#}")));
     }
     cfg.save(dir)?;
-    Ok(flash("/settings", "ok", saved_message(&ui)))
-}
-
-fn saved_message(ui: &Ui) -> &'static str {
-    if ui.opts.supervised {
-        "Saved. Restart Keepword, with the button above, to apply the changes."
-    } else {
-        "Saved. The changes take effect when Keepword starts again."
-    }
+    // The banner under the heading says what applying them takes.
+    Ok(flash("/settings", "ok", "Saved."))
 }
 
 pub(super) async fn save_file(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
     // Browsers send line breaks as CRLF.
     let text = form.get("toml").replace("\r\n", "\n") + "\n";
     Ok(match Config::save_text(&ui.node.dir, &text) {
-        Ok(()) => flash("/settings", "ok", saved_message(&ui)),
+        Ok(()) => flash("/settings", "ok", "Saved."),
         Err(e) => flash("/settings#file", "error", format!("Not saved: {e:#}")),
     })
 }
