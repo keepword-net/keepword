@@ -18,6 +18,7 @@ pub mod web;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::AtomicI64;
 
 use anyhow::{Context, Result, anyhow, bail};
 use keepword_capture::{Captured, HttpCapturer};
@@ -52,6 +53,9 @@ pub struct Node {
     limits: Mutex<federation::Limits>,
     /// Witnesses this node relays for.
     relay: relay::Relay,
+    /// When the watch scheduler last got anywhere: a capture, or a look for
+    /// pages due. The web UI tells a stalled scheduler by it.
+    pub scheduler_beat: AtomicI64,
 }
 
 /// Result of one capture.
@@ -127,6 +131,7 @@ impl Node {
             sched: Mutex::new(Default::default()),
             limits: Mutex::new(Default::default()),
             relay: Default::default(),
+            scheduler_beat: AtomicI64::new(now_ms()),
         };
         // Behind a relay, witnesses are where the relay last placed them.
         if node.config.network.relay.is_some()

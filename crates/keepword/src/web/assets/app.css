@@ -141,9 +141,12 @@ pre {
   font-size: 13px;
 }
 .side-foot .logout { margin-top: 4px; }
-.state { display: flex; align-items: center; gap: 8px; font-weight: 550; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); flex: none; }
+.state { display: flex; align-items: center; gap: 8px; font-weight: 550; color: var(--text); text-decoration: none; }
+a.state:hover { color: var(--accent); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.on { background: var(--green); }
+.dot.warn { background: var(--amber); }
+.dot.bad { background: var(--red); }
 .count {
   display: inline-block;
   min-width: 20px;
@@ -169,7 +172,7 @@ pre {
   align-items: start;
 }
 .col-side { display: grid; gap: 16px; min-width: 0; }
-.col-main > :first-child, .col-side > * { margin-top: 0; }
+.col-main > :first-child { margin-top: 0; }
 .col-side > .notice { margin-bottom: 0; }
 .col-side h2 { margin-bottom: 10px; }
 .col-side .card h2 { font-size: 16px; }
@@ -212,7 +215,7 @@ pre {
   .menu .icon { display: none; }
   .menu .count { margin-left: 3px; min-width: 18px; line-height: 18px; }
   .side-foot { margin: 0 0 0 auto; padding: 0; border: 0; }
-  .side-foot > div { display: none; }
+  .side-foot > :not(.logout) { display: none; }
   .side-foot .logout { margin: 0; }
   .content { padding: 20px 16px 40px; }
   h1 { font-size: 22px; }
@@ -250,6 +253,8 @@ section { margin-top: 30px; }
   box-shadow: var(--shadow);
 }
 .card + .card, .card + section, .notice + .card { margin-top: 14px; }
+/* In the side column the grid's gap spaces the boxes. */
+.col-side > .card, .col-side > section, .col-side > details, .col-side > .notice { margin-top: 0; }
 .card h2 { margin-bottom: 10px; }
 .card-head {
   display: flex;
@@ -409,6 +414,13 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+/* A clicked radio or checkbox shows it is chosen; the ring is for the
+   keyboard, and around an option card it goes round the card. */
+input[type=radio], input[type=checkbox] { accent-color: var(--accent); }
+input[type=radio]:focus, input[type=checkbox]:focus { outline: none; }
+input[type=radio]:focus-visible, input[type=checkbox]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.choice input:focus-visible { outline: none; }
+label.choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 input:disabled, textarea:disabled { opacity: 0.6; }
 form.inline select { width: auto; padding: 5px 9px; font-size: 13px; }
 .row-fields { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }

@@ -508,3 +508,47 @@ async fn a_password_is_used_as_typed() {
             .any(|c| c.starts_with("keepword_session="))
     );
 }
+
+#[tokio::test]
+async fn the_sidebar_says_how_checks_are_going() {
+    let t = tempfile::tempdir().unwrap();
+    let n = node(t.path());
+    let state = |app: Router| async move {
+        let body = get(&app, "/pages", "").await.body;
+        let at = body.find("class=\"side-foot\"").unwrap();
+        body[at..at + 300].to_string()
+    };
+    let off = keepword::web::router(
+        n.clone(),
+        Options {
+            auth: UiAuth::LocalOnly,
+            watching: false,
+            supervised: false,
+        },
+    )
+    .unwrap();
+    assert!(state(off).await.contains("Automatic checks off"));
+    let app = ui(&n, UiAuth::LocalOnly);
+    assert!(state(app.clone()).await.contains("No pages to check"));
+    let now = keepword_core::now_ms();
+    let url = "https://a.example/terms";
+    n.store.watch_add(url, 3600, false, now).unwrap();
+    assert!(state(app.clone()).await.contains("Checks running"));
+    n.store
+        .watch_mark(url, now, Some("connection refused"))
+        .unwrap();
+    assert!(state(app.clone()).await.contains("1 page failing"));
+    // Checked fine two hours ago, every hour: an hour overdue.
+    n.store.watch_mark(url, now - 7_200_000, None).unwrap();
+    assert!(state(app.clone()).await.contains("1 check late"));
+    // The scheduler got nowhere for an hour.
+    n.scheduler_beat
+        .store(now - 3_600_000, std::sync::atomic::Ordering::Relaxed);
+    assert!(state(app.clone()).await.contains("Checks stalled"));
+    assert!(
+        get(&app, "/", "")
+            .await
+            .body
+            .contains("Checks have stalled")
+    );
+}

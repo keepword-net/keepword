@@ -17,6 +17,7 @@ mod settings;
 mod view;
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use axum::Router;
@@ -34,6 +35,7 @@ pub use auth::UiAuth;
 /// Capture every watched URL that is due. Returns how many were attempted.
 pub async fn run_due(node: &Arc<Node>, log: impl Fn(String)) -> anyhow::Result<usize> {
     let now = now_ms();
+    node.scheduler_beat.store(now, Ordering::Relaxed);
     let due: Vec<_> = node
         .store
         .watches()?
@@ -46,7 +48,9 @@ pub async fn run_due(node: &Arc<Node>, log: impl Fn(String)) -> anyhow::Result<u
         })
         .collect();
     for w in &due {
-        match node.capture(&w.url, w.render).await {
+        let captured = node.capture(&w.url, w.render).await;
+        node.scheduler_beat.store(now_ms(), Ordering::Relaxed);
+        match captured {
             Ok(o) => {
                 node.store.watch_mark(&w.url, now_ms(), None)?;
                 let status = match &o.change {

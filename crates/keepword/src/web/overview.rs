@@ -124,6 +124,13 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                 code { "keepword serve --watch" } " to check them on their schedule."
             }
         }
+        @if let view::Checks::Stalled(t) = view::checks(&ui) {
+            div.notice.error {
+                b { "Checks have stalled." }
+                " Keepword hasn't got anywhere with them since " (view::when(t))
+                ". Restarting it usually helps; its log says what held it up."
+            }
+        }
         @if own.is_empty() {
             (welcome(&ui, joined))
             @if !review.is_empty() { (review_section) }

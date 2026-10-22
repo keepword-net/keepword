@@ -1,6 +1,8 @@
 //! What every page shares: the layout, times, page addresses, intervals,
 //! and how normalized text and its changes read.
 
+use std::sync::atomic::Ordering;
+
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::{Html, IntoResponse, Response};
@@ -56,6 +58,7 @@ pub(super) fn button(
 pub(super) struct Ctx {
     flash: Option<(String, String)>,
     to_review: u64,
+    checks: Checks,
 }
 
 impl FromRequestParts<Ui> for Ctx {
@@ -65,7 +68,88 @@ impl FromRequestParts<Ui> for Ctx {
         Ok(Ctx {
             flash: parts.extensions.get::<Flash>().and_then(|f| f.0.clone()),
             to_review: ui.node.store.changes_to_review_count().unwrap_or(0),
+            checks: checks(ui),
         })
+    }
+}
+
+/// How the watched pages' checks are going, worst first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Checks {
+    /// Keepword runs without `--watch`.
+    Off,
+    Nothing,
+    /// The scheduler hasn't got anywhere since then.
+    Stalled(i64),
+    /// Pages whose last check failed.
+    Failing(usize),
+    /// Pages whose check is overdue.
+    Late(usize),
+    /// All well; the last check, if any.
+    Running(Option<i64>),
+}
+
+/// A check is late this long after it was due. The scheduler looks for
+/// pages due every 15 seconds, but captures them one at a time.
+const LATE_MS: i64 = 15 * 60_000;
+
+pub(super) fn checks(ui: &Ui) -> Checks {
+    let node = &ui.node;
+    if !ui.opts.watching {
+        return Checks::Off;
+    }
+    let watches = node.store.watches().unwrap_or_default();
+    if watches.is_empty() {
+        return Checks::Nothing;
+    }
+    let now = now_ms();
+    // A capture gives up after its timeout, so a scheduler that hasn't got
+    // anywhere in twice that is stuck.
+    let stalled_ms = (2_000 * node.config.capture.timeout_secs as i64).max(6 * 60_000);
+    let beat = node.scheduler_beat.load(Ordering::Relaxed);
+    if now - beat > stalled_ms {
+        return Checks::Stalled(beat);
+    }
+    let failing = watches.iter().filter(|w| w.last_error.is_some()).count();
+    if failing > 0 {
+        return Checks::Failing(failing);
+    }
+    let late = watches
+        .iter()
+        .filter(|w| {
+            let every = i64::try_from(w.every_secs.saturating_mul(1000)).unwrap_or(i64::MAX);
+            let due = w.last_run.map_or(w.added_at, |t| t.saturating_add(every));
+            now - due > LATE_MS
+        })
+        .count();
+    if late > 0 {
+        return Checks::Late(late);
+    }
+    Checks::Running(watches.iter().filter_map(|w| w.last_run).max())
+}
+
+fn checks_state(c: Checks) -> Markup {
+    let plural =
+        |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    html! {
+        @match c {
+            Checks::Off => { div.state { span.dot.warn {} "Automatic checks off" } }
+            Checks::Nothing => { a.state href="/pages" { span.dot {} "No pages to check" } }
+            Checks::Stalled(t) => {
+                a.state href="/" { span.dot.bad {} "Checks stalled" }
+                div.muted.small { "nothing since " (when(t)) }
+            }
+            Checks::Failing(n) => {
+                a.state href="/pages?show=errors" { span.dot.bad {} (plural(n, "page failing", "pages failing")) }
+            }
+            Checks::Late(n) => {
+                a.state href="/pages" { span.dot.warn {} (plural(n, "check late", "checks late")) }
+            }
+            Checks::Running(last) => {
+                div.state { span.dot.on {} "Checks running" }
+                @if let Some(t) = last { div.muted.small { "last check " (when(t)) } }
+            }
+        }
     }
 }
 
@@ -149,13 +233,7 @@ pub(super) fn page(ui: &Ui, ctx: &Ctx, nav: Nav, title: &str, body: Markup) -> R
                         (item(Nav::Settings, "/settings", "Settings", 0))
                     }
                     div.side-foot {
-                        div.state {
-                            @if ui.opts.watching {
-                                span.dot.on {} "Checking pages"
-                            } @else {
-                                span.dot {} "Automatic checks off"
-                            }
-                        }
+                        (checks_state(ctx.checks))
                         div.muted.small {
                             "Witness " span.mono { (ui.node.key.public().short()) }
                         }
