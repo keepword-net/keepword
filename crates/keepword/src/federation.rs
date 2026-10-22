@@ -67,6 +67,48 @@ const ALERT_MAX_AGE_MS: i64 = 7 * 86_400_000;
 /// A peer that synced within this long counts as working when picking
 /// whom to gossip with.
 const HEALTHY_MS: i64 = 86_400_000;
+/// A peer counts as in sync this long after its last sync that worked.
+/// Each round only syncs a sample of the peers, so in a large network a
+/// working one can go longer unsynced: it shows as quiet until then.
+pub const IN_SYNC_MS: i64 = 3_600_000;
+
+/// How a peer has answered this node's syncs. Nothing else tells: a peer
+/// whose last sync worked is only known to work as of then.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PeerState {
+    /// Its last sync worked, within `IN_SYNC_MS`.
+    InSync,
+    /// Its last sync worked, but longer ago.
+    Quiet,
+    /// Its last sync failed.
+    Failing,
+    /// This node never synced with it.
+    Never,
+    /// It has no address to sync with; it only pushes.
+    PushOnly,
+}
+
+impl PeerState {
+    pub fn of(p: &Peer, now: i64) -> Self {
+        match (&p.endpoint, p.last_sync, &p.last_error, p.last_ok) {
+            (None, ..) => PeerState::PushOnly,
+            (_, None, ..) => PeerState::Never,
+            (_, _, Some(_), _) => PeerState::Failing,
+            (_, _, None, Some(ok)) if now - ok < IN_SYNC_MS => PeerState::InSync,
+            _ => PeerState::Quiet,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PeerState::InSync => "in sync",
+            PeerState::Quiet => "quiet",
+            PeerState::Failing => "failing",
+            PeerState::Never => "never synced",
+            PeerState::PushOnly => "push-only",
+        }
+    }
+}
 /// Messages this node takes in an hour, all together, from keys it has
 /// neither synced with nor seen push to it (see `Limits`).
 const UNPROVEN_PER_HOUR: u64 = 2000;
@@ -1563,6 +1605,66 @@ mod tests {
         let d = node.descriptor();
         assert!(now_ms() - d.body.issued_at_ms < 60_000);
         d.verify().unwrap();
+    }
+
+    #[test]
+    fn peers_work_as_of_their_last_sync_only() {
+        let open = |peers: Vec<String>| {
+            let t = tempfile::tempdir().unwrap();
+            let mut cfg = crate::config::Config::default();
+            cfg.network.peers = peers;
+            Node::init(t.path(), &cfg).unwrap();
+            (Node::open(t.path()).unwrap(), t)
+        };
+        let now = now_ms();
+        let add = |node: &Node, endpoint: Option<&str>| {
+            let k = keepword_core::Keypair::generate().unwrap();
+            let d = Signed::sign(
+                Descriptor {
+                    key: k.public(),
+                    endpoint: endpoint.map(str::to_string),
+                    vantage: Default::default(),
+                    issued_at_ms: now,
+                    software: "test".into(),
+                },
+                &k,
+            )
+            .unwrap();
+            node.store.peer_upsert(&d, now).unwrap();
+            k.public()
+        };
+        let warnings = |node: &Node| crate::status_warnings(node, true).unwrap().join("\n");
+        let (node, _t) = open(vec!["https://seed.example".into()]);
+        let state = |k: &WitnessKey| PeerState::of(&node.store.peer(k).unwrap().unwrap(), now);
+        assert_eq!(state(&add(&node, None)), PeerState::PushOnly);
+        let peer = add(&node, Some("https://a.example"));
+        assert_eq!(state(&peer), PeerState::Never);
+        assert!(warnings(&node).contains("no peer synced in the last hour"));
+        node.store
+            .peer_mark_sync(&peer, now - 10 * 60_000, None)
+            .unwrap();
+        assert_eq!(state(&peer), PeerState::InSync);
+        assert!(!warnings(&node).contains("no peer synced"));
+        // It worked two hours ago, and nothing synced since: it may have
+        // gone down in between, so it isn't shown as in sync.
+        node.store
+            .peer_mark_sync(&peer, now - 2 * 3_600_000, None)
+            .unwrap();
+        assert_eq!(state(&peer), PeerState::Quiet);
+        assert!(warnings(&node).contains("no peer synced in the last hour"));
+        node.store
+            .peer_mark_sync(&peer, now, Some("connection refused"))
+            .unwrap();
+        assert_eq!(state(&peer), PeerState::Failing);
+        assert!(warnings(&node).contains("1 peer(s) failing"));
+        // Peers it remembers don't make a node federate.
+        let (alone, _t) = open(vec![]);
+        add(&alone, Some("https://a.example"));
+        let w = warnings(&alone);
+        assert!(
+            w.contains("federation is off") && !w.contains("no peer synced"),
+            "{w}"
+        );
     }
 
     #[test]

@@ -7,6 +7,21 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+### Added
+
+- **A web UI that runs a node without the CLI**, for people who won't
+  open a terminal, as on Umbrel or TrueNAS. The overview lists the
+  changes to review, each with the words that changed marked, says how
+  the node is doing, and what to do first on a new node. Pages can be
+  added several at once, also asking the network to watch them, and each
+  has its checks, changes, what other witnesses saw, its evidence, and a
+  way to delete its content. A change reads like the page, with the
+  whole page and the normalized lines a tab away, and is marked
+  reviewed. The network page asks the network to watch pages, adds and
+  forgets witnesses and syncs. Settings has the common ones as a form,
+  all of `keepword.toml` for the rest, the password, and a restart.
+  The CLI does all of this as before.
+
 ### Changed
 
 - **Normalized text is `keepword-norm/5`**, for the fixes below. Captures
@@ -14,6 +29,21 @@ only change incompatibly in a new major version.
   witness upgrades, verdicts and rechecks draw on fewer witnesses, and a
   witness doesn't compare a URL's first capture after the upgrade with
   the one before. Upgrade every witness.
+- **The web UI asks for a password when it listens beyond localhost**,
+  as the container's does: the first visit sets it, or
+  `KEEPWORD_UI_PASSWORD`. On localhost it asks for none, unless one is
+  set, and only answers requests addressed to localhost, so no website
+  can reach it through a browser. `keepword serve --ui-auth none`
+  (`KEEPWORD_UI_AUTH`) leaves the login to a proxy in front of it.
+  Forms only work from the UI's own pages.
+- **`keepword serve` exits with status 75 when the web UI restarts it**
+  to apply new settings, for systemd (`Restart=on-failure`) or the
+  container runtime to start it again. The UI only offers to where one
+  of them runs it, or `KEEPWORD_SUPERVISED=1` says another does; else it
+  says to restart Keepword by hand.
+- **The store's schema is version 6**: changes record when they were
+  reviewed. Once this version has opened a node's data, 2.4.0 refuses
+  it.
 
 ### Fixed
 
@@ -28,6 +58,16 @@ only change incompatibly in a new major version.
 - **Adding a canonical link raised a silent-edit alert.** The
   `canonical:` line is gone from the normalized text: it is SEO markup a
   site changes on all its pages at once, not content.
+- **A peer looked fine as long as its last sync had worked, however long
+  ago.** A round syncs a sample of the peers, so one that went down
+  wasn't noticed until it was picked again, and if the node stopped
+  syncing, every peer kept looking as it did then. A peer is now in sync
+  only when a sync worked within the hour, and quiet after that;
+  `keepword net peers` says when it last worked rather than when it was
+  last tried, and `net status` counts the peers in sync and warns when
+  none is. `net status` also says federation is off when no endpoint,
+  relay or peers are set, as `keepword serve` then doesn't sync, even
+  with peers it remembers.
 
 ## [2.4.0] - 2026-10-20
 

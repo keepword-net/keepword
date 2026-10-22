@@ -353,8 +353,8 @@ The API (`/v1`, see `crates/keepword/src/api.rs`) serves the node's
 descriptor, known peers, tree head, leaf IDs, attestations, inclusion and
 consistency proofs, bundles, and its gossip outbox, and accepts pushes. It
 never serves page content, except blobs for hosts on
-`network.serve_content_hosts`. The web UI, which shows content, listens
-separately on localhost.
+`network.serve_content_hosts`. The web UI, which shows content and runs the
+node, listens separately: on localhost, or beyond it behind a password.
 
 ### 6.2 Sync and gossip
 

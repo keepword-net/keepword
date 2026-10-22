@@ -6,6 +6,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use keepword::config::{Config, ContentConfig, Retain, VantageConfig};
+use keepword::federation::PeerState;
+use keepword::web::UiAuth;
 use keepword::{Node, Outcome, method_name, parse_time};
 use keepword_core::bundle::{Bundle, Report, Status};
 use keepword_core::net::{Alert, AlertKind};
@@ -134,6 +136,11 @@ enum Cmd {
         /// Periodically anchor the log in Bitcoin via OpenTimestamps.
         #[arg(long)]
         anchor: bool,
+        /// Who must log in to the web UI: `auto` asks for a password when
+        /// the UI listens beyond this machine; `none` leaves the login to a
+        /// proxy in front of it, like Umbrel's.
+        #[arg(long, value_enum, default_value = "auto", env = "KEEPWORD_UI_AUTH")]
+        ui_auth: UiAuthArg,
     },
     /// Talk to other witnesses.
     Net {
@@ -183,6 +190,13 @@ enum Cmd {
         /// Round number (default: latest).
         round: Option<u64>,
     },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum UiAuthArg {
+    Auto,
+    Password,
+    None,
 }
 
 #[derive(Subcommand)]
@@ -306,6 +320,21 @@ fn main() {
             std::process::exit(2);
         }
     }
+}
+
+/// Whether a service manager starts this process again when it exits:
+/// systemd, a container runtime.
+fn supervised() -> bool {
+    // For service managers that leave no trace to go by: runit, s6, …
+    match std::env::var("KEEPWORD_SUPERVISED").as_deref() {
+        Ok("1") => return true,
+        Ok("0") => return false,
+        _ => {}
+    }
+    std::env::var_os("INVOCATION_ID").is_some()
+        || std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+        || Path::new("/.dockerenv").exists()
+        || Path::new("/run/.containerenv").exists()
 }
 
 /// A time to the minute, for lists: `2026-10-19T11:22Z`.
@@ -732,12 +761,31 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
             api_addr,
             watch,
             anchor,
+            ui_auth,
         } => {
             let node = Arc::new(Node::open(&dir)?);
             let ui = tokio::net::TcpListener::bind(&addr).await?;
+            let auth = match ui_auth {
+                UiAuthArg::Password => UiAuth::Password,
+                UiAuthArg::None => UiAuth::Off,
+                UiAuthArg::Auto if ui.local_addr()?.ip().is_loopback() => UiAuth::LocalOnly,
+                UiAuthArg::Auto => UiAuth::Password,
+            };
             eprintln!("web UI on http://{addr}/");
+            if auth == UiAuth::Off && !ui.local_addr()?.ip().is_loopback() {
+                eprintln!(
+                    "warning: the web UI asks for no password; anyone who reaches {addr} controls this node"
+                );
+            }
             let mut tasks = tokio::task::JoinSet::new();
-            let ui_app = keepword::web::router(node.clone());
+            let ui_app = keepword::web::router(
+                node.clone(),
+                keepword::web::Options {
+                    auth,
+                    watching: watch,
+                    supervised: supervised(),
+                },
+            )?;
             tasks.spawn(async move { axum::serve(ui, ui_app).await.map_err(anyhow::Error::from) });
             if let Some(api_addr) = api_addr {
                 let api = tokio::net::TcpListener::bind(&api_addr).await?;
@@ -778,6 +826,10 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
             tokio::select! {
                 Some(r) = tasks.join_next() => r??,
                 _ = tokio::signal::ctrl_c() => eprintln!("stopping"),
+                _ = keepword::web::RESTART.notified() => {
+                    eprintln!("restarting to apply the new settings");
+                    std::process::exit(keepword::web::RESTART_STATUS);
+                }
             }
         }
         Cmd::Net { cmd } => {
@@ -834,11 +886,25 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     if cli.json {
                         return print_json(&peers).map(|_| true);
                     }
-                    let scores = node.store.reputation_scores(now_ms())?;
+                    let now = now_ms();
+                    let scores = node.store.reputation_scores(now)?;
                     for p in peers {
-                        let loc = node.location_of(&p.key, now_ms())?;
+                        let loc = node.location_of(&p.key, now)?;
+                        // When it last answered a sync: a peer is only known
+                        // to work as of then.
+                        let worked = p.last_ok.map_or("never".to_string(), minute);
+                        let state = match PeerState::of(&p, now) {
+                            PeerState::Failing => format!(
+                                "failing, last worked {worked}: {}",
+                                p.last_error.as_deref().unwrap_or_default()
+                            ),
+                            s @ (PeerState::InSync | PeerState::Quiet) => {
+                                format!("{}, last worked {worked}", s.label())
+                            }
+                            s => s.label().to_string(),
+                        };
                         println!(
-                            "{}  {}  log {}  location {}  reputation {:.1}  last sync {}{}",
+                            "{}  {}  log {}  location {}  reputation {:.1}  {state}",
                             p.key.short(),
                             p.endpoint.as_deref().unwrap_or("(no endpoint)"),
                             // Only known for logs this node audits.
@@ -848,10 +914,6 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                             loc.map(|l| l.to_string())
                                 .unwrap_or_else(|| "unknown".into()),
                             scores.get(&p.key).copied().unwrap_or(0.0),
-                            p.last_sync.map(format_ms).unwrap_or_else(|| "never".into()),
-                            p.last_error
-                                .map(|e| format!("  error: {e}"))
-                                .unwrap_or_default()
                         );
                     }
                 }
@@ -906,7 +968,12 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                             .map(|l| l.to_string())
                             .unwrap_or_else(|| "not corroborated".into())
                     );
-                    println!("peers       {}", node.store.peers()?.len());
+                    let peers = node.store.peers()?;
+                    let in_sync = peers
+                        .iter()
+                        .filter(|p| PeerState::of(p, now) == PeerState::InSync)
+                        .count();
+                    println!("peers       {}, {in_sync} in sync", peers.len());
                     println!(
                         "candidates  {} witnesses eligible for assignment",
                         node.candidates(now)?.len()
@@ -945,7 +1012,7 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                             bad.iter().map(|k| k.short()).collect::<Vec<_>>().join(", ")
                         );
                     }
-                    let warnings = status_warnings(&node, me.is_some())?;
+                    let warnings = keepword::status_warnings(&node, me.is_some())?;
                     if !warnings.is_empty() {
                         println!();
                         for w in warnings {
@@ -1164,84 +1231,6 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
         }
     }
     Ok(true)
-}
-
-/// Misconfigurations that silently keep a node out of the network.
-fn status_warnings(node: &Node, located: bool) -> Result<Vec<String>> {
-    let cfg = &node.config;
-    let mut w = Vec::new();
-    let peers = node.store.peers()?;
-    let reachable = cfg.network.endpoint.is_some() || cfg.network.relay.is_some();
-    if !reachable && cfg.network.peers.is_empty() && peers.is_empty() {
-        w.push(
-            "federation is off: set network.endpoint (the node then joins through the default \
-             seeds) and restart the service"
-                .to_string(),
-        );
-    } else if peers.is_empty() && cfg.network.bootstrap().is_empty() {
-        w.push("no peers to join through: set network.peers to any witness's address".to_string());
-    }
-    if cfg.quorum.asn_db.is_none() {
-        w.push(
-            "no IP-to-ASN table (quorum.asn_db), so no witness's location can be corroborated"
-                .to_string(),
-        );
-    } else if !located && !cfg.quorum.trust_self_reported {
-        w.push(format!(
-            "this node's location isn't corroborated yet; it needs {} peers to observe it \
-             (a few sync rounds), and until then it isn't assigned requests",
-            cfg.quorum.min_observers
-        ));
-    }
-    // Behind a CDN, unless the proxy passes on the client's address, every
-    // peer seems to connect from the CDN, and that is where it is placed.
-    let now = now_ms();
-    let mut cloudflare = 0;
-    for p in &peers {
-        if node
-            .location_of(&p.key, now)?
-            .is_some_and(|l| l.direct && l.asn == 13335)
-        {
-            cloudflare += 1;
-        }
-    }
-    if cloudflare > 0 {
-        w.push(format!(
-            "{cloudflare} peer(s) seem to connect from Cloudflare (AS13335); behind Cloudflare, \
-             have your reverse proxy pass on the client's address (network.client_ip_header, \
-             docs/INSTALL.md)"
-        ));
-    }
-    if cfg.network.client_ip_header.is_some() && !cfg.network.trust_forwarded_for {
-        w.push(
-            "network.client_ip_header does nothing without network.trust_forwarded_for".to_string(),
-        );
-    }
-    let failing = peers
-        .iter()
-        .filter(|p| p.endpoint.is_some() && p.last_error.is_some())
-        .count();
-    if failing > 0 {
-        w.push(format!(
-            "{failing} peer(s) failing to sync; see `keepword net peers`"
-        ));
-    }
-    let q = &cfg.quorum;
-    for (on, what) in [
-        (q.trust_self_reported, "quorum.trust_self_reported"),
-        (cfg.beacon.allow_insecure_seed, "beacon.allow_insecure_seed"),
-        (
-            cfg.network.allow_private_peers,
-            "network.allow_private_peers",
-        ),
-        (q.min_asns < 3, "quorum.min_asns below 3"),
-        (q.min_dissent_asns < 2, "quorum.min_dissent_asns below 2"),
-    ] {
-        if on {
-            w.push(format!("test-only setting in use: {what}"));
-        }
-    }
-    Ok(w)
 }
 
 fn print_verdict(v: &keepword::consensus::VerdictView) {

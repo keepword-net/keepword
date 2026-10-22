@@ -80,7 +80,7 @@ anchor.
 | `watch add\|rm\|list\|run [--once]` | Manage and run the watchlist |
 | `log head\|consistency OLD [NEW]\|audit` | Tree head, consistency proofs, full self-audit |
 | `purge URL [--forget]` | Erase stored content (and records); the log stays valid |
-| `serve [--addr A] [--api-addr B] [--watch] [--anchor]` | Web UI (private), peer API (public), scheduler, federation and anchoring loops |
+| `serve [--addr A] [--api-addr B] [--watch] [--anchor] [--ui-auth auto\|password\|none]` | Web UI, peer API (public), scheduler, federation and anchoring loops |
 | `net add-peer URL\|remove-peer KEY\|peers\|sync\|status\|lookup IP` | Federation with other witnesses; `status` warns about misconfiguration |
 | `request URL [--every 1h] [--for 7days] [--render]` / `request URL --cancel` | Ask the network to watch a URL (asking again replaces the request), or withdraw it |
 | `requests [--mine]` | Active network watch requests |
@@ -125,11 +125,37 @@ keepword init --asn 3320 --country DE
 keepword serve --api-addr 0.0.0.0:8481 --watch --anchor
 ```
 
-Put the API (`/v1/...`) behind TLS on your public endpoint. Keep the web UI
-(`--addr`, default `127.0.0.1:8480`) private, because it shows page content.
+Put the API (`/v1/...`) behind TLS on your public endpoint. The web UI
+(`--addr`, default `127.0.0.1:8480`) shows page content and runs the node:
+see below before letting others reach it.
 Peers corroborate each other's location from the addresses they see pushes
 come from. Verdicts only count witnesses whose ASN is corroborated this
 way, so every node needs an IP-to-ASN table.
+
+## The web UI
+
+`keepword serve` runs a web UI that does what most people need without
+the CLI: the changes to review, with what changed marked in the page's
+own words; adding pages (several at once) and how often they're checked;
+each page's history, what other witnesses saw, its evidence bundles, and
+deleting its content; asking the network to watch a page; the witnesses
+this node knows; and the settings, with a restart to apply them where a
+service manager starts the node again (systemd, a container; for one
+Keepword can't tell, like runit or s6, set `KEEPWORD_SUPERVISED=1`).
+
+Who may use it:
+
+- Listening on localhost (the default), it asks for no password and only
+  answers requests addressed to localhost, so no website can reach it
+  through your browser. Use an SSH tunnel to reach it from elsewhere, or
+  set a password under Settings to have it ask anyway.
+- Listening beyond localhost (`--addr 0.0.0.0:8480`, as in the
+  container), it asks for a password. The first visit sets one, or
+  `KEEPWORD_UI_PASSWORD` does. Forgot it? Delete `ui-password` in the
+  data directory and open the UI to choose a new one.
+- `--ui-auth none` (`KEEPWORD_UI_AUTH=none`) asks for none, for a proxy
+  in front of the UI that does the login, like Umbrel's.
+  `--ui-auth password` always asks.
 
 ## Headless rendering
 

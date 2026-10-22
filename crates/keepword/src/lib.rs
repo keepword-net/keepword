@@ -18,6 +18,7 @@ pub mod web;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::AtomicI64;
 
 use anyhow::{Context, Result, anyhow, bail};
 use keepword_capture::{Captured, HttpCapturer};
@@ -32,6 +33,7 @@ use serde::Serialize;
 use url::Url;
 
 use crate::config::{Config, Retain};
+use crate::federation::PeerState;
 
 pub struct Node {
     pub dir: PathBuf,
@@ -51,6 +53,9 @@ pub struct Node {
     limits: Mutex<federation::Limits>,
     /// Witnesses this node relays for.
     relay: relay::Relay,
+    /// When the watch scheduler last got anywhere: a capture, or a look for
+    /// pages due. The web UI tells a stalled scheduler by it.
+    pub scheduler_beat: AtomicI64,
 }
 
 /// Result of one capture.
@@ -126,6 +131,7 @@ impl Node {
             sched: Mutex::new(Default::default()),
             limits: Mutex::new(Default::default()),
             relay: Default::default(),
+            scheduler_beat: AtomicI64::new(now_ms()),
         };
         // Behind a relay, witnesses are where the relay last placed them.
         if node.config.network.relay.is_some()
@@ -357,6 +363,7 @@ impl Node {
             added: diff.map_or(0, |d| d.added as u64),
             removed: diff.map_or(0, |d| d.removed as u64),
             summary: summary.to_string(),
+            reviewed_at: None,
         })?;
         Ok(())
     }
@@ -712,6 +719,95 @@ pub fn diff_summary(a: &Attestation, b: &Attestation, d: &Change) -> String {
             a.status, b.status, d.added, d.removed
         )
     }
+}
+
+/// Misconfigurations that silently keep a node out of the network.
+pub fn status_warnings(node: &Node, located: bool) -> Result<Vec<String>> {
+    let cfg = &node.config;
+    let mut w = Vec::new();
+    let peers = node.store.peers()?;
+    let reachable = cfg.network.endpoint.is_some() || cfg.network.relay.is_some();
+    // When `keepword serve` federates, whatever peers this node remembers.
+    let federating = reachable || !cfg.network.peers.is_empty();
+    if !federating {
+        w.push(
+            "federation is off: set network.endpoint (the node then joins through the default \
+             seeds) and restart the service"
+                .to_string(),
+        );
+    } else if peers.is_empty() && cfg.network.bootstrap().is_empty() {
+        w.push("no peers to join through: set network.peers to any witness's address".to_string());
+    }
+    if cfg.quorum.asn_db.is_none() {
+        w.push(
+            "no IP-to-ASN table (quorum.asn_db), so no witness's location can be corroborated"
+                .to_string(),
+        );
+    } else if !located && !cfg.quorum.trust_self_reported {
+        w.push(format!(
+            "this node's location isn't corroborated yet; it needs {} peers to observe it \
+             (a few sync rounds), and until then it isn't assigned requests",
+            cfg.quorum.min_observers
+        ));
+    }
+    // Behind a CDN, unless the proxy passes on the client's address, every
+    // peer seems to connect from the CDN, and that is where it is placed.
+    let now = now_ms();
+    let mut cloudflare = 0;
+    for p in &peers {
+        if node
+            .location_of(&p.key, now)?
+            .is_some_and(|l| l.direct && l.asn == 13335)
+        {
+            cloudflare += 1;
+        }
+    }
+    if cloudflare > 0 {
+        w.push(format!(
+            "{cloudflare} peer(s) seem to connect from Cloudflare (AS13335); behind Cloudflare, \
+             have your reverse proxy pass on the client's address (network.client_ip_header, \
+             docs/INSTALL.md)"
+        ));
+    }
+    if cfg.network.client_ip_header.is_some() && !cfg.network.trust_forwarded_for {
+        w.push(
+            "network.client_ip_header does nothing without network.trust_forwarded_for".to_string(),
+        );
+    }
+    let states: Vec<PeerState> = peers.iter().map(|p| PeerState::of(p, now)).collect();
+    let failing = states.iter().filter(|s| **s == PeerState::Failing).count();
+    if failing > 0 {
+        w.push(format!(
+            "{failing} peer(s) failing to sync; see `keepword net peers`"
+        ));
+    }
+    // Peers keep the state of their last sync: if none synced lately, this
+    // node stopped syncing, and they all just look as they did then.
+    if federating
+        && peers.iter().any(|p| p.endpoint.is_some())
+        && !states.contains(&PeerState::InSync)
+    {
+        w.push(
+            "no peer synced in the last hour: is `keepword serve` running? See `keepword net peers`"
+                .to_string(),
+        );
+    }
+    let q = &cfg.quorum;
+    for (on, what) in [
+        (q.trust_self_reported, "quorum.trust_self_reported"),
+        (cfg.beacon.allow_insecure_seed, "beacon.allow_insecure_seed"),
+        (
+            cfg.network.allow_private_peers,
+            "network.allow_private_peers",
+        ),
+        (q.min_asns < 3, "quorum.min_asns below 3"),
+        (q.min_dissent_asns < 2, "quorum.min_dissent_asns below 2"),
+    ] {
+        if on {
+            w.push(format!("test-only setting in use: {what}"));
+        }
+    }
+    Ok(w)
 }
 
 /// Method name for display.

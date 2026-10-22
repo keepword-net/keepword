@@ -430,9 +430,15 @@ impl Config {
     }
 
     pub fn save(&self, dir: &Path) -> Result<()> {
-        let text = toml::to_string_pretty(self)?;
-        fs::write(dir.join(CONFIG_FILE), text)?;
-        Ok(())
+        write_config(dir, &toml::to_string_pretty(self)?)
+    }
+
+    /// Replace `keepword.toml` with `text` as written, comments and all, if
+    /// it is a valid configuration.
+    pub fn save_text(dir: &Path, text: &str) -> Result<()> {
+        let c: Config = toml::from_str(text)?;
+        c.validate()?;
+        write_config(dir, text)
     }
 
     pub fn vantage(&self) -> Vantage {
@@ -455,6 +461,16 @@ impl Config {
         }
         h
     }
+}
+
+/// Write the configuration whole or not at all: a node can't start with
+/// half of one.
+fn write_config(dir: &Path, text: &str) -> Result<()> {
+    let path = dir.join(CONFIG_FILE);
+    let tmp = path.with_extension("toml.tmp");
+    fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+    fs::rename(&tmp, &path)?;
+    Ok(())
 }
 
 /// Saves an unset service URL as "", which disables it: left out of the

@@ -12,6 +12,8 @@
 #   KEEPWORD_CLIENT_IP_HEADER        the header your proxy puts the client
 #                                    address in, e.g. X-Real-IP (behind a CDN)
 #   KEEPWORD_ASN_DB=0                don't download the IP-to-ASN table
+#   KEEPWORD_UI_PASSWORD             the web UI's password (read by keepword)
+#   KEEPWORD_UI_AUTH=none            no web UI password: a proxy asks for one
 set -eu
 
 dir=${KEEPWORD_DIR:-/data}

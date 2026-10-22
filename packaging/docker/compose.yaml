@@ -19,6 +19,7 @@ services:
       KEEPWORD_RELAY: ""          # at home, instead: auto
       KEEPWORD_PEERS: ""          # e.g. https://a.example,https://b.example
       KEEPWORD_BEHIND_PROXY: "1"
+      KEEPWORD_UI_PASSWORD: ""    # web UI password; else the first visit sets one
 
 volumes:
   keepword-data:

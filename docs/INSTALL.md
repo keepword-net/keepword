@@ -122,9 +122,12 @@ sudo systemctl restart keepword         # after changing the config
 journalctl -u keepword -f
 ```
 
-The web UI shows captured content, so it only listens on localhost. View it
-with an SSH tunnel: `ssh -L 8480:127.0.0.1:8480 your-server`, then open
-http://localhost:8480.
+The web UI shows captured content and runs the node, so it only listens on
+localhost. View it with an SSH tunnel: `ssh -L 8480:127.0.0.1:8480
+your-server`, then open http://localhost:8480. Settings you change there
+apply when it offers to restart the service. To reach it from your network
+instead, see "The web UI" in [USAGE.md](USAGE.md): it then asks for a
+password.
 
 To start a network or join one, see [NETWORK.md](NETWORK.md).
 
@@ -246,6 +249,13 @@ or add `--build` to `up`. Settings:
 | `KEEPWORD_BEHIND_PROXY=1` | trust `X-Forwarded-For` from your proxy |
 | `KEEPWORD_CLIENT_IP_HEADER` | the header your proxy puts the client address in, e.g. `X-Real-IP` (behind a CDN) |
 | `KEEPWORD_ASN_DB=0` | skip the IP-to-ASN table (refreshed at start when older than a week) |
+| `KEEPWORD_UI_PASSWORD` | the web UI's password; else the first visit sets one |
+| `KEEPWORD_UI_AUTH=none` | no password, for a proxy in front of the UI that asks for one |
+
+In the container the web UI listens on all addresses, so it asks for a
+password. Settings changed in it apply after its restart button, which
+restarts the container. Those set by the variables above are shown there
+but changed here, since the container applies them on every start.
 
 The `/data` volume holds the key: back it up. Run CLI commands with
 `docker exec keepword keepword …`. With Docker's userland proxy, peers can
