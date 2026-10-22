@@ -1499,7 +1499,7 @@ dependencies = [
 
 [[package]]
 name = "keepword"
-version = "2.5.0-beta.1"
+version = "2.5.0-beta.2"
 dependencies = [
  "anyhow",
  "argon2",
@@ -1531,7 +1531,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-capture"
-version = "2.5.0-beta.1"
+version = "2.5.0-beta.2"
 dependencies = [
  "chromiumoxide",
  "futures",
@@ -1549,7 +1549,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-core"
-version = "2.5.0-beta.1"
+version = "2.5.0-beta.2"
 dependencies = [
  "base64 0.23.1",
  "blake3",
@@ -1569,7 +1569,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-normalize"
-version = "2.5.0-beta.1"
+version = "2.5.0-beta.2"
 dependencies = [
  "ego-tree",
  "encoding_rs",
@@ -1589,7 +1589,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-store"
-version = "2.5.0-beta.1"
+version = "2.5.0-beta.2"
 dependencies = [
  "keepword-core",
  "rusqlite",
