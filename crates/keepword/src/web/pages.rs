@@ -451,7 +451,7 @@ fn status(ui: &Ui, u: &str, watch: Option<&Watch>, last: Option<i64>) -> Markup 
                     "Checked " (view::every(w.every_secs))
                     @if let Some(t) = w.last_run {
                         @let next = t + (w.every_secs as i64) * 1000;
-                        " · next check " (view::when(next.max(now_ms())))
+                        @if next > now_ms() { " · next check " (view::when(next)) } @else { " · a check is due" }
                     }
                     "."
                 }

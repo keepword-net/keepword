@@ -28,7 +28,7 @@ pub(super) async fn page(
     let report = Node::verify_bundle(&ui.node.bundle(&rec, true)?);
     let summary = report.summary();
     let a = &rec.signed.attestation;
-    let raw_kept = ui.node.store.blobs.get(&a.body_hash)?.is_some();
+    let raw_kept = ui.node.store.blobs.has(&a.body_hash);
     let size = ui.node.store.with_merkle(|m| m.len())?;
     let body = html! {
         nav.crumbs { a href=(view::page_link(&a.url)) { "← " (view::address(&a.url)) } }

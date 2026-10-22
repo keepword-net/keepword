@@ -205,9 +205,15 @@ fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(|(_, v)| v.to_string())
 }
 
-/// Whether a request is addressed to this machine by name or address.
-fn local_host(headers: &HeaderMap) -> bool {
-    let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else {
+/// Whether a request is addressed to this machine by name or address: its
+/// Host header, or over HTTP/2 the authority in its URI.
+fn local_host(req: &Request) -> bool {
+    let host = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .or_else(|| req.uri().authority().map(|a| a.as_str()));
+    let Some(host) = host else {
         // HTTP/1.0 clients, curl with no Host: nothing to rebind.
         return true;
     };
@@ -261,7 +267,7 @@ const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-
 pub(super) async fn guard(State(ui): State<Ui>, mut req: Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
     let asset = path.starts_with("/static/") || path == "/favicon.svg";
-    let mut res = if ui.auth.mode() == UiAuth::LocalOnly && !local_host(req.headers()) {
+    let mut res = if ui.auth.mode() == UiAuth::LocalOnly && !local_host(&req) {
         (
             StatusCode::MISDIRECTED_REQUEST,
             view::bare(
@@ -515,10 +521,11 @@ pub(super) fn relogin(ui: &Ui, mut r: Response) -> Response {
 mod tests {
     use super::*;
 
-    fn headers(host: &str) -> HeaderMap {
-        let mut h = HeaderMap::new();
-        h.insert(header::HOST, HeaderValue::from_str(host).unwrap());
-        h
+    fn addressed_to(host: &str) -> Request {
+        Request::get("/")
+            .header(header::HOST, host)
+            .body(axum::body::Body::empty())
+            .unwrap()
     }
 
     #[test]
@@ -531,7 +538,7 @@ mod tests {
             "[::1]:8480",
             "app.localhost",
         ] {
-            assert!(local_host(&headers(ok)), "{ok}");
+            assert!(local_host(&addressed_to(ok)), "{ok}");
         }
         for bad in [
             "evil.example",
@@ -540,8 +547,13 @@ mod tests {
             "192.168.1.5:8480",
             "[2001:db8::1]:80",
         ] {
-            assert!(!local_host(&headers(bad)), "{bad}");
+            assert!(!local_host(&addressed_to(bad)), "{bad}");
         }
+        // HTTP/2: the authority, in the URI.
+        let h2 = Request::get("http://evil.example/")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert!(!local_host(&h2));
     }
 
     #[test]
