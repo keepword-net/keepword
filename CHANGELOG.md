@@ -68,6 +68,9 @@ only change incompatibly in a new major version.
   none is. `net status` also says federation is off when no endpoint,
   relay or peers are set, as `keepword serve` then doesn't sync, even
   with peers it remembers.
+- **A site rule with a broken CSS selector was saved, and the node then
+  wouldn't start.** `keepword config set` and the web UI's settings now
+  check site rules' selectors before saving them.
 
 ## [2.4.0] - 2026-10-20
 

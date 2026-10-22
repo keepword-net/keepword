@@ -380,6 +380,10 @@ impl Config {
         {
             bail!("network.client_ip_header must be a header name like X-Real-IP, got {h:?}");
         }
+        // Or the node, which normalizes with them, wouldn't start.
+        for r in &self.rules {
+            r.validate()?;
+        }
         Ok(())
     }
 
@@ -564,6 +568,19 @@ mod tests {
         c.set_path("beacon.drand_url", None).unwrap();
         c.save(dir.path()).unwrap();
         assert_eq!(Config::load(dir.path()).unwrap().beacon.drand(), None);
+    }
+
+    #[test]
+    fn site_rules_are_checked_before_they_are_saved() {
+        let mut c = Config::default();
+        let rule = |sel: &str| format!(r#"[{{host = "a.example", remove = ["{sel}"]}}]"#);
+        assert!(c.set_path("rules", Some(&rule("[["))).is_err());
+        assert!(c.rules.is_empty());
+        c.set_path("rules", Some(&rule("#global-banner"))).unwrap();
+        assert_eq!(c.rules.len(), 1);
+        let dir = tempfile::tempdir().unwrap();
+        let bad = "[[rules]]\nhost = \"a.example\"\nremove = [\"[[\"]\n";
+        assert!(Config::save_text(dir.path(), bad).is_err());
     }
 
     #[test]
