@@ -12,7 +12,6 @@ use keepword_store::net::Peer;
 use maud::{Markup, html};
 
 use super::auth::{Post, flash};
-use super::pages::REQUEST_DAYS;
 use super::view::{self, Ctx, Nav};
 use super::{Ui, WebResult, bad_request};
 use crate::federation::PeerState;
@@ -36,6 +35,10 @@ fn state_badge(p: &Peer, now: i64) -> Markup {
     };
     html! { span class=(class) title=(why) { (s.label()) } }
 }
+
+/// How long the network is asked to watch a page by default, and for as
+/// long as a page watched here is watched (renewed).
+const REQUEST_DAYS: u64 = (crate::federation::LEASE_MS / 86_400_000) as u64;
 
 /// The form that asks the network to watch a page.
 pub(super) fn request_form(ui: &Ui, url: Option<&str>, every: u64) -> Markup {
@@ -113,10 +116,10 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
     let joined = super::joined(node);
     let watches = node.store.watches()?;
     let for_network = watches.iter().filter(|w| w.request_id.is_some()).count();
-    // Pages watched here: this node renews its requests for them.
+    // Pages watched here and asked about: this node keeps asking.
     let watched: std::collections::HashSet<&str> = watches
         .iter()
-        .filter(|w| w.request_id.is_none())
+        .filter(|w| w.request_id.is_none() && w.network)
         .map(|w| w.url.as_str())
         .collect();
     // What `keepword net status` warns about, but that federation is off:
@@ -330,14 +333,12 @@ pub(super) async fn request(State(ui): State<Ui>, form: Post) -> WebResult<Respo
 }
 
 pub(super) async fn withdraw(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
-    Ok(match ui.node.cancel_requests(form.get("u"))? {
-        0 => flash(
-            "/network#request",
-            "error",
-            "There was no active request for it.",
-        ),
+    let back = super::change::safe_back(form.get("back"), "/network#request");
+    Ok(match ui.node.withdraw_requests(form.get("u"))? {
+        // It ran out while the node was down: it isn't asked about again.
+        0 => flash(&back, "ok", "It won't be asked about again."),
         _ => flash(
-            "/network#request",
+            &back,
             "ok",
             "Withdrawn. Witnesses stop after their next sync.",
         ),

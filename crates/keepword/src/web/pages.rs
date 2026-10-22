@@ -16,9 +16,6 @@ use super::view::{self, Ctx, Nav};
 use super::{Ui, WebResult, bad_request, not_found};
 use crate::consensus::VerdictView;
 
-/// How long a request to the network lasts when added with pages.
-pub(super) const REQUEST_DAYS: u64 = 7;
-
 /// This node's network requests in use, and how many the network takes
 /// from one node.
 pub(super) fn requests_in_use(ui: &Ui) -> (u64, u64) {
@@ -329,8 +326,10 @@ pub(super) async fn add(State(ui): State<Ui>, form: Post) -> WebResult<Response>
             over += 1;
             continue;
         }
-        let ms = (REQUEST_DAYS * 86_400_000) as i64;
-        match ui.node.replace_request(u, every, ms, render) {
+        match ui
+            .node
+            .replace_request(u, every, crate::federation::LEASE_MS, render)
+        {
             // Asking again for a page replaces the request: no more in use.
             Ok((_, replaced)) => {
                 asked += 1;
@@ -432,6 +431,12 @@ pub(super) async fn detail(
             .and_then(view::title_of),
         None => None,
     };
+    // An active request for it: one can run out while the node is down.
+    let asked = node
+        .store
+        .requests_by(&node.key.public(), now_ms())?
+        .iter()
+        .any(|r| r.body.url == url);
     let changes = node.store.changes(Some(&url), 500)?;
     let to_review = changes.iter().filter(|c| c.reviewed_at.is_none()).count();
     let newest = changes.iter().map(|c| c.seq).max().unwrap_or(0);
@@ -445,9 +450,23 @@ pub(super) async fn detail(
             h2 { "What other witnesses saw" }
             (verdict_view(&verdict))
         }
-        details.card {
-            summary { "Ask the network to watch this page" }
-            (super::network::request_form(&ui, Some(u), watch.as_ref().map_or(3_600, |w| w.every_secs)))
+        @if watch.as_ref().is_some_and(|w| w.network) {
+            div.card {
+                @if asked {
+                    p { b { "The network watches this page too." } " This node asks again while it watches it." }
+                } @else {
+                    p { b { "This node asks the network to watch this page" } " again at its next sync, as its request ran out." }
+                }
+                div.actions {
+                    (view::button(&ui, "/network/withdraw", &[("u", u), ("back", &here)], "Withdraw", "ghost small",
+                        Some("Stop asking the network to watch this page? Witnesses stop after their next sync.")))
+                }
+            }
+        } @else {
+            details.card {
+                summary { "Ask the network to watch this page" }
+                (super::network::request_form(&ui, Some(u), watch.as_ref().map_or(3_600, |w| w.every_secs)))
+            }
         }
     };
     let main = html! {
@@ -657,10 +676,20 @@ pub(super) async fn watch(State(ui): State<Ui>, form: Post) -> WebResult<Respons
 
 pub(super) async fn unwatch(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
     let url = form_url(&form)?;
-    let msg = if ui.node.store.watch_remove(&url)? {
-        "Stopped watching. Its records stay."
-    } else {
-        "It wasn't watched."
+    let asked = ui
+        .node
+        .store
+        .watches()?
+        .iter()
+        .any(|w| w.url == url && w.network);
+    let msg = match ui.node.store.watch_remove(&url)? {
+        // Its request isn't renewed any more, but runs its time out.
+        true if asked => {
+            "Stopped watching. Its records stay. The network watches it for up to a week \
+             more, until its request runs out; withdraw it on the Network page to stop now."
+        }
+        true => "Stopped watching. Its records stay.",
+        false => "It wasn't watched.",
     };
     Ok(flash(&view::page_link(&url), "ok", msg))
 }
