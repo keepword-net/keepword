@@ -552,3 +552,37 @@ async fn the_sidebar_says_how_checks_are_going() {
             .contains("Checks have stalled")
     );
 }
+
+#[tokio::test]
+async fn a_config_file_broken_by_hand_can_be_fixed_and_isnt_restarted_with() {
+    let t = tempfile::tempdir().unwrap();
+    let app = ui(&node(t.path()), UiAuth::LocalOnly);
+    let file = t.path().join("keepword.toml");
+    let good = std::fs::read_to_string(&file).unwrap();
+    let broken = format!("{good}\n[[rules]]\nhost = \"a.example\"\nremove = [\"[[\"]\n");
+    std::fs::write(&file, &broken).unwrap();
+    let page = get(&app, "/settings", "").await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(
+        page.body.contains("keepword.toml isn't valid"),
+        "{}",
+        page.body
+    );
+    assert!(
+        page.body
+            .contains("<details class=\"card\" id=\"file\" open>")
+    );
+    let token = csrf(&page.body);
+    let r = post(&app, "/settings/restart", "", &[("csrf", &token)]).await;
+    let shown = get(&app, &r.location, &r.cookies.join("; ")).await;
+    assert!(shown.body.contains("Not restarting"), "{}", shown.body);
+    post(
+        &app,
+        "/settings/file",
+        "",
+        &[("csrf", &token), ("toml", &good)],
+    )
+    .await;
+    let fixed = get(&app, "/settings", "").await.body;
+    assert!(!fixed.contains("isn't valid") && fixed.contains("Where this node is"));
+}

@@ -339,14 +339,20 @@ impl NetworkConfig {
 }
 
 impl Config {
+    /// The configuration a node runs with: as written, and valid.
     pub fn load(dir: &Path) -> Result<Self> {
+        let cfg = Self::read(dir)?;
+        cfg.validate()?;
+        Ok(cfg)
+    }
+
+    /// The configuration as written, unchecked, to mend one that isn't
+    /// valid: whatever is set then must make it valid to be saved.
+    pub fn read(dir: &Path) -> Result<Self> {
         let path = dir.join(CONFIG_FILE);
         let text = fs::read_to_string(&path)
             .with_context(|| format!("reading {} (run `keepword init` first?)", path.display()))?;
-        let cfg: Config =
-            toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-        cfg.validate()?;
-        Ok(cfg)
+        toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -581,6 +587,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bad = "[[rules]]\nhost = \"a.example\"\nremove = [\"[[\"]\n";
         assert!(Config::save_text(dir.path(), bad).is_err());
+        // Written by hand: read to be mended, refused to run with.
+        std::fs::write(dir.path().join(CONFIG_FILE), bad).unwrap();
+        assert!(Config::load(dir.path()).is_err());
+        let mut c = Config::read(dir.path()).unwrap();
+        c.set_path("rules", Some(&rule("#global-banner"))).unwrap();
     }
 
     #[test]

@@ -1201,7 +1201,8 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
             }
         }
         Cmd::Config { cmd } => {
-            let mut cfg = Config::load(&dir)?;
+            // Unchecked, so a setting that isn't valid can be set right.
+            let mut cfg = Config::read(&dir)?;
             match cmd {
                 ConfigCmd::Show => print!("{}", toml::to_string_pretty(&cfg)?),
                 ConfigCmd::Get { key } => match cfg.get_path(&key)? {

@@ -70,7 +70,10 @@ only change incompatibly in a new major version.
   with peers it remembers.
 - **A site rule with a broken CSS selector was saved, and the node then
   wouldn't start.** `keepword config set` and the web UI's settings now
-  check site rules' selectors before saving them.
+  check site rules' selectors before saving them. A `keepword.toml`
+  that isn't valid, changed by hand, can be mended with `keepword config
+  set` and in the settings, which then only show the file to fix; the
+  web UI won't restart Keepword with it.
 
 ## [2.4.0] - 2026-10-20
 

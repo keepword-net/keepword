@@ -38,9 +38,27 @@ fn locked(var: &str) -> Markup {
 
 pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> {
     let node = &ui.node;
-    let saved = Config::load(&node.dir)?;
-    let pending = toml::to_string(&saved)? != toml::to_string(&node.config)?;
     let file = std::fs::read_to_string(node.dir.join(CONFIG_FILE)).unwrap_or_default();
+    // Changed by hand, the file may not be valid: the node runs on, but
+    // wouldn't start again. Only the file can be edited then.
+    let saved = match Config::load(&node.dir) {
+        Ok(c) => c,
+        Err(e) => {
+            let body = html! {
+                div.measure {
+                    div.head { h1 { "Settings" } }
+                    div.notice.error {
+                        b { "keepword.toml isn't valid: " } (format!("{e:#}")) ". "
+                        "Keepword runs on with the settings it started with, but won't start again \
+                         until the file is fixed. Fix it here."
+                    }
+                    (file_editor(&ui, &file, true))
+                }
+            };
+            return Ok(view::page(&ui, &ctx, Nav::Settings, "Settings", body));
+        }
+    };
+    let pending = toml::to_string(&saved)? != toml::to_string(&node.config)?;
     let located = node.location_of(&node.key.public(), keepword_core::now_ms())?;
     let mode_env = from_env("KEEPWORD_ENDPOINT").or_else(|| from_env("KEEPWORD_RELAY"));
     let net = &saved.network;
@@ -155,17 +173,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                 h2 { "Password" }
                 (password_section(&ui))
             }
-            details.card #file {
-                summary { b { "Edit keepword.toml" } span.muted.small { " (every setting, for experts)" } }
-                p.muted.small {
-                    "The whole configuration. It's checked before it's saved; see docs/keepword.example.toml for what each setting does."
-                }
-                form.stack method="post" action="/settings/file" {
-                    (view::csrf(&ui))
-                    textarea.mono name="toml" rows="20" spellcheck="false" { (file) }
-                    div { button.btn type="submit" { "Save file" } }
-                }
-            }
+            (file_editor(&ui, &file, false))
             section.card {
                 h2 { "About this node" }
                 dl.facts {
@@ -179,6 +187,23 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         }
     };
     Ok(view::page(&ui, &ctx, Nav::Settings, "Settings", body))
+}
+
+/// All of `keepword.toml`, to edit as text.
+fn file_editor(ui: &Ui, file: &str, open: bool) -> Markup {
+    html! {
+        details.card #file open[open] {
+            summary { b { "Edit keepword.toml" } span.muted.small { " (every setting, for experts)" } }
+            p.muted.small {
+                "The whole configuration. It's checked before it's saved; see docs/keepword.example.toml for what each setting does."
+            }
+            form.stack method="post" action="/settings/file" {
+                (view::csrf(ui))
+                textarea.mono name="toml" rows="20" spellcheck="false" { (file) }
+                div { button.btn type="submit" { "Save file" } }
+            }
+        }
+    }
 }
 
 /// Restarting Keepword, to apply saved settings or unstick it: a button
@@ -338,6 +363,16 @@ pub(super) async fn password(State(ui): State<Ui>, form: Post) -> WebResult<Resp
 }
 
 pub(super) async fn restart(State(ui): State<Ui>, _: Post) -> WebResult<Response> {
+    // It wouldn't start again, and the UI would go with it.
+    if let Err(e) = Config::load(&ui.node.dir) {
+        return Ok(flash(
+            "/settings",
+            "error",
+            format!(
+                "Not restarting: keepword.toml isn't valid ({e:#}), and Keepword wouldn't start with it."
+            ),
+        ));
+    }
     if !ui.opts.supervised {
         return Ok(flash(
             "/settings",
