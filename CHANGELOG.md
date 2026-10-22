@@ -7,6 +7,28 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+### Changed
+
+- **Normalized text is `keepword-norm/5`**, for the fixes below. Captures
+  only compare when they were normalized the same way: until every
+  witness upgrades, verdicts and rechecks draw on fewer witnesses, and a
+  witness doesn't compare a URL's first capture after the upgrade with
+  the one before. Upgrade every witness.
+
+### Fixed
+
+- **A site's menus, banners and footers raised silent-edit alerts.** On a
+  page without `<main>`, like Criteo's and Cloudflare's policies, the
+  whole body was compared, so a rotated story in the menu or a renamed
+  footer link showed as a silent edit on every page of the site. Site
+  chrome is now dropped: `<nav>`, the ARIA `navigation`, `banner` and
+  `contentinfo` landmarks, and a `<header>` or `<footer>` outside any
+  section. A section's own header stays. Chrome in a plain `<div>` still
+  needs a site rule.
+- **Adding a canonical link raised a silent-edit alert.** The
+  `canonical:` line is gone from the normalized text: it is SEO markup a
+  site changes on all its pages at once, not content.
+
 ## [2.4.0] - 2026-10-20
 
 Witnesses at home, reached through relays, witnesses that need no
