@@ -137,6 +137,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "argon2"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "134c52ddac6d63c576bef8168db10c83c49c26444ecbc68060fef078925a901c"
+dependencies = [
+ "base64ct",
+ "blake2",
+ "cpufeatures 0.3.1",
+ "password-hash",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -324,6 +336,15 @@ dependencies = [
  "serde",
  "tap",
  "wyz",
+]
+
+[[package]]
+name = "blake2"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b5d4d889834ee8ecfc0f8426ad30faf7cdcb10f741a8e6d7224d95325479f6f"
+dependencies = [
+ "digest 0.11.3",
 ]
 
 [[package]]
@@ -1026,6 +1047,7 @@ dependencies = [
  "block-buffer 0.12.1",
  "const-oid 0.10.2",
  "crypto-common 0.2.2",
+ "ctutils",
 ]
 
 [[package]]
@@ -1916,13 +1938,16 @@ dependencies = [
 
 [[package]]
 name = "keepword"
-version = "2.4.0"
+version = "2.5.0-beta.1"
 dependencies = [
  "anyhow",
+ "argon2",
  "axum",
  "base64 0.23.1",
+ "blake3",
  "clap",
  "futures",
+ "getrandom 0.4.3",
  "hex",
  "humantime",
  "keepword-capture",
@@ -1930,6 +1955,7 @@ dependencies = [
  "keepword-normalize",
  "keepword-store",
  "libc",
+ "maud",
  "reqwest",
  "serde",
  "serde_json",
@@ -1942,7 +1968,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-capture"
-version = "2.4.0"
+version = "2.5.0-beta.1"
 dependencies = [
  "keepword-core",
  "reqwest",
@@ -1955,7 +1981,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-core"
-version = "2.4.0"
+version = "2.5.0-beta.1"
 dependencies = [
  "base64 0.23.1",
  "blake3",
@@ -1975,7 +2001,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-normalize"
-version = "2.4.0"
+version = "2.5.0-beta.1"
 dependencies = [
  "ego-tree",
  "encoding_rs",
@@ -1995,7 +2021,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-store"
-version = "2.4.0"
+version = "2.5.0-beta.1"
 dependencies = [
  "keepword-core",
  "rusqlite",
@@ -2006,7 +2032,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-tlsn"
-version = "2.4.0"
+version = "2.5.0-beta.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2101,6 +2127,28 @@ version = "0.1.0-alpha.6"
 source = "git+https://github.com/tlsnotary/mpz2?rev=8f897838f4e24aff9da8e8b012e8ba35ae770141#8f897838f4e24aff9da8e8b012e8ba35ae770141"
 dependencies = [
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "maud"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8156733e27020ea5c684db5beac5d1d611e1272ab17901a49466294b84fc217e"
+dependencies = [
+ "itoa",
+ "maud_macros",
+]
+
+[[package]]
+name = "maud_macros"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7261b00f3952f617899bc012e3dbd56e4f0110a038175929fa5d18e5a19913ca"
+dependencies = [
+ "proc-macro2",
+ "proc-macro2-diagnostics",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -2632,6 +2680,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "password-hash"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aab41826031698d6ffcd9cff78ef56ef998e39dc7e5067cdfebe373842d4723b"
+dependencies = [
+ "getrandom 0.4.3",
+ "phc",
+]
+
+[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2645,6 +2703,17 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "phc"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44dc769b75f93afdddd8c7fa12d685292ddeff1e66f7f0f3a234cf1818afe892"
+dependencies = [
+ "base64ct",
+ "ctutils",
+ "getrandom 0.4.3",
+]
 
 [[package]]
 name = "phf"
@@ -2818,6 +2887,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "proc-macro2-diagnostics"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af066a9c399a26e020ada66a034357a868728e72cd426f3adcd35f80d88d88c8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "version_check",
 ]
 
 [[package]]
