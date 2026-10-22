@@ -3,7 +3,8 @@
 //!
 //! Each fixture is modelled on a common publishing stack (a German public
 //! broadcaster's article, WordPress with Jetpack and Cloudflare, a SaaS
-//! privacy policy behind OneTrust, GOV.UK, a JS-rendered dashboard). Noise
+//! privacy policy behind OneTrust, a corporate legal page without `<main>`,
+//! GOV.UK, a JS-rendered dashboard). Noise
 //! variants reproduce what changes between two requests to the real thing.
 
 use std::fs;
@@ -284,6 +285,67 @@ fn privacy_policy() {
                 replace: &[("/legal/subprocessors", "/legal/partners")],
                 later_s: 7 * 86_400,
                 expect: Expect::Silent,
+            },
+        ],
+    );
+}
+
+#[test]
+fn legal_page_without_main() {
+    // Without <main> or <article>, the whole body is walked. A site changes
+    // its menus, banner and footer on every page at once.
+    check(
+        "legal-no-main.html",
+        "https://www.adtech.example/privacy/",
+        &[
+            Variant {
+                name: "featured story and banner rotated",
+                replace: &[
+                    ("<li>Blog</li>", "<li>NEWS</li>"),
+                    (
+                        "/blog/retail-media-outlook-2026/\">What’s next for retail media: A 2026 outlook",
+                        "/news/award-2026/\">Our platform recognized for innovation",
+                    ),
+                    (
+                        "/news/press-releases/2026/09/platform-launch/\">Introducing our new platform",
+                        "/news/award-2026/\">Our platform recognized for innovation",
+                    ),
+                ],
+                later_s: 86_400,
+                expect: Expect::Same,
+            },
+            Variant {
+                name: "footer link renamed",
+                replace: &[(
+                    "/diversity-equity-and-inclusion/\">Diversity, equity, &amp; inclusion",
+                    "/impact/\">Impact",
+                )],
+                later_s: 86_400,
+                expect: Expect::Same,
+            },
+            Variant {
+                name: "canonical link added",
+                replace: &[(
+                    "</title>",
+                    "</title><link rel=\"canonical\" href=\"https://www.adtech.example/privacy/\">",
+                )],
+                later_s: 86_400,
+                expect: Expect::Same,
+            },
+            Variant {
+                name: "retention extended",
+                replace: &[("13 months", "25 months")],
+                later_s: 86_400,
+                expect: Expect::Silent,
+            },
+            Variant {
+                name: "supplement changed with its date",
+                replace: &[
+                    ("opt out of the sharing", "ask us about the sharing"),
+                    ("Updated January 1, 2026", "Updated October 1, 2026"),
+                ],
+                later_s: 86_400,
+                expect: Expect::Disclosed,
             },
         ],
     );
