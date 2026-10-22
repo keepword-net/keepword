@@ -146,8 +146,17 @@ footer.wrap { padding-bottom: 32px; }
 @media (max-width: 720px) {
   .bar { flex-wrap: wrap; gap: 6px 12px; padding-top: 8px; }
   .brand span { display: none; }
-  .menu { order: 3; flex-basis: 100%; flex-wrap: wrap; gap: 2px; padding-bottom: 8px; }
-  .menu a { padding: 5px 8px; font-size: 14px; }
+  .menu {
+    order: 3;
+    flex-basis: 100%;
+    display: grid;
+    grid-template-columns: repeat(5, auto);
+    justify-content: space-between;
+    gap: 0;
+    padding-bottom: 6px;
+  }
+  .menu a { padding: 5px 6px; font-size: 14px; }
+  .menu .count { margin-left: 3px; min-width: 18px; line-height: 18px; }
   .logout { margin-left: auto; }
   h1 { font-size: 22px; }
 }
@@ -199,6 +208,7 @@ details.card[open] > summary { margin-bottom: 14px; }
 .inline-card { margin-top: 14px; }
 
 .cards { display: grid; gap: 14px; }
+.more-changes { margin-top: 14px; }
 .change .title {
   font-weight: 650;
   font-size: 16px;
@@ -263,12 +273,14 @@ p.notice { margin: 10px 0; }
 a.stat:hover { border-color: var(--accent); }
 .stat .n { display: block; font-size: 22px; font-weight: 700; }
 .stat .l { color: var(--muted); font-size: 13px; }
+@media (max-width: 720px) { .stats { grid-template-columns: 1fr 1fr; } }
 
 .welcome { margin-bottom: 16px; }
 .welcome h2 { font-size: 20px; }
 .steps { padding-left: 22px; color: var(--muted); }
 .steps li { margin-bottom: 6px; }
-.steps li.done { text-decoration: line-through; }
+.steps li.done { color: var(--green); }
+.steps li.done::marker { content: "✓  "; }
 
 /* ------------------------------------------------------------- badges */
 
@@ -363,7 +375,7 @@ label.choice input { margin-top: 4px; }
 .settings details { margin-top: 12px; }
 .settings details > summary { cursor: pointer; color: var(--accent); margin-bottom: 10px; }
 
-.filters { margin-bottom: 10px; display: flex; gap: 8px; }
+.filters { margin: 14px 0 10px; display: flex; gap: 8px; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .chips a {
   text-decoration: none;

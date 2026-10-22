@@ -13,6 +13,17 @@ use super::auth::{Flash, UiAuth};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub(super) const CSS: &str = include_str!("assets/app.css");
+pub(super) const JS: &str = include_str!("assets/app.js");
+
+/// What pages put in the assets' addresses, so a browser fetches them
+/// again when they change.
+static ASSETS_TAG: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    let mut h = blake3::Hasher::new();
+    h.update(CSS.as_bytes()).update(JS.as_bytes());
+    h.finalize().to_hex()[..12].to_string()
+});
+
 pub(super) fn q(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
@@ -75,8 +86,8 @@ fn head(title: &str) -> Markup {
             meta name="color-scheme" content="light dark";
             title { (title) " · Keepword" }
             link rel="icon" href="/favicon.svg" type="image/svg+xml";
-            link rel="stylesheet" href={ "/static/app.css?v=" (VERSION) };
-            script src={ "/static/app.js?v=" (VERSION) } defer {}
+            link rel="stylesheet" href={ "/static/app.css?v=" (*ASSETS_TAG) };
+            script src={ "/static/app.js?v=" (*ASSETS_TAG) } defer {}
         }
     }
 }
@@ -462,27 +473,52 @@ fn changed(del: &[&str], ins: &[&str]) -> Markup {
 
 /// Most lines a diff shows before it stops; the technical view and the
 /// evidence have the rest.
-const MAX_SHOWN: usize = 2_000;
+const MAX_SHOWN: usize = 5_000;
+
+/// Unchanged lines folded away beyond this many are only counted.
+const MAX_FOLDED: usize = 400;
+
+/// The pieces that fit in `MAX_SHOWN` lines, the last one cut short if it
+/// doesn't, and whether any were left out: a page rewritten whole can have
+/// a million lines.
+fn shown(ps: Vec<Piece<'_>>) -> (Vec<Piece<'_>>, bool) {
+    let mut left = MAX_SHOWN;
+    let mut out = Vec::new();
+    for p in ps {
+        let n = match &p {
+            Piece::Same(_) => 1,
+            Piece::Hidden(ls) if ls.len() <= MAX_FOLDED => ls.len(),
+            Piece::Hidden(_) => 1,
+            Piece::Changed(d, i) => d.len() + i.len(),
+        };
+        if n > left {
+            if let Piece::Changed(mut d, mut i) = p {
+                d.truncate(left / 2);
+                i.truncate(left - d.len());
+                out.push(Piece::Changed(d, i));
+            }
+            return (out, true);
+        }
+        left -= n;
+        out.push(p);
+    }
+    (out, false)
+}
+
+const TOO_LONG: &str =
+    "This change is too long to show in full here; the evidence bundles have all of it.";
 
 /// A change as the page reads: what changed, a little around it, and the
 /// rest folded away (all of it with `whole`).
 pub(super) fn reading(c: &Change, whole: bool) -> Markup {
-    let ps = pieces(&c.ops, if whole { usize::MAX / 2 } else { 2 });
-    let mut shown = 0;
-    let visible: Vec<&Piece<'_>> = ps
-        .iter()
-        .take_while(|p| {
-            shown += piece_len(p);
-            shown <= MAX_SHOWN
-        })
-        .collect();
+    let (ps, cut) = shown(pieces(&c.ops, if whole { usize::MAX / 2 } else { 2 }));
     html! {
         div.doc {
-            @for p in &visible {
+            @for p in &ps {
                 @match p {
                     Piece::Same(l) => { (block(l, None)) }
                     Piece::Hidden(ls) => {
-                        @if ls.len() <= 400 {
+                        @if ls.len() <= MAX_FOLDED {
                             details.same {
                                 summary { (ls.len()) " unchanged " (lines(ls.len())) }
                                 @for l in ls { (block(l, None)) }
@@ -494,18 +530,8 @@ pub(super) fn reading(c: &Change, whole: bool) -> Markup {
                     Piece::Changed(d, i) => { (changed(d, i)) }
                 }
             }
-            @if visible.len() < ps.len() {
-                p.muted { "This change is too long to show in full here. The technical view and the evidence bundles have all of it." }
-            }
+            @if cut { p.muted { (TOO_LONG) } }
         }
-    }
-}
-
-fn piece_len(p: &Piece<'_>) -> usize {
-    match p {
-        Piece::Same(_) => 1,
-        Piece::Hidden(_) => 1,
-        Piece::Changed(d, i) => d.len() + i.len(),
     }
 }
 
@@ -545,8 +571,9 @@ pub(super) fn preview(c: &Change, max: usize) -> Markup {
 
 /// The normalized lines as they are, `+` and `-`: what was hashed.
 pub(super) fn technical(c: &Change) -> Markup {
-    let ps = pieces(&c.ops, 3);
+    let (ps, cut) = shown(pieces(&c.ops, 3));
     html! {
+        @if cut { p.muted { (TOO_LONG) } }
         div.raw.mono {
             @for p in &ps {
                 @match p {
@@ -599,6 +626,18 @@ mod tests {
         assert!(html.contains("&lt;script&gt;"));
         // Only web addresses are links.
         assert!(!html.contains("href=\"javascript:"), "{html}");
+    }
+
+    #[test]
+    fn a_page_rewritten_whole_shows_in_part() {
+        let a: String = (0..100_000).map(|i| format!("p: a{i}\n")).collect();
+        let b: String = (0..100_000).map(|i| format!("p: b{i}\n")).collect();
+        let c = diff::diff(&a, &b).unwrap();
+        for html in [reading(&c, false), reading(&c, true), technical(&c)] {
+            let html = html.into_string();
+            assert!(html.contains(TOO_LONG));
+            assert!(html.len() < 2_000_000, "{} bytes", html.len());
+        }
     }
 
     #[test]

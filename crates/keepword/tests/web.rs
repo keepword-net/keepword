@@ -318,7 +318,9 @@ async fn a_change_shows_what_changed_and_is_reviewed() {
     )
     .await;
     assert_eq!(n.store.changes_to_review_count().unwrap(), 0);
-    assert!(get(&app, "/", "").await.body.contains("Nothing to review"));
+    // Nothing is watched, so the overview says how to start.
+    let home = get(&app, "/", "").await.body;
+    assert!(!home.contains("Mark as reviewed") && home.contains("Start by watching a page"));
     // Old links still lead there.
     let old = get(&app, &format!("/url?u={url}"), "").await;
     assert!(old.location.starts_with("/page?u="));

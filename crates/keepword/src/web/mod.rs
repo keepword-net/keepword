@@ -202,14 +202,11 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
 }
 
 async fn css() -> Response {
-    asset("text/css; charset=utf-8", include_str!("assets/app.css"))
+    asset("text/css; charset=utf-8", view::CSS)
 }
 
 async fn js() -> Response {
-    asset(
-        "text/javascript; charset=utf-8",
-        include_str!("assets/app.js"),
-    )
+    asset("text/javascript; charset=utf-8", view::JS)
 }
 
 /// Keepword's seal: the tab icon, and the mark in the page header.

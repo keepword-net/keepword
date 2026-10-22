@@ -10,8 +10,10 @@ use super::change::{load, safe_back};
 use super::view::{self, Ctx, Nav};
 use super::{Ui, WebResult};
 
-/// Most changes the overview lists to review.
-const TO_REVIEW: u32 = 25;
+/// Most changes the overview lists to review, and how many of them show
+/// what changed: each takes reading both versions and diffing them.
+const TO_REVIEW: u32 = 50;
+const PREVIEWS: usize = 10;
 
 pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> {
     let node = &ui.node;
@@ -33,7 +35,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         .collect();
 
     let mut cards = Vec::new();
-    for c in &review {
+    for c in review.iter().take(PREVIEWS) {
         cards.push(review_card(&ui, c)?);
     }
 
@@ -88,6 +90,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                 }
             }
         }
+        @if !own.is_empty() || !review.is_empty() {
         section #review {
             div.section-head {
                 h2 { "To review" }
@@ -107,10 +110,25 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                     "A " b { "disclosed edit" } " says it was updated."
                 }
                 div.cards { @for c in cards { (c) } }
+                @if review.len() > PREVIEWS {
+                    ul.list.more-changes {
+                        @for c in &review[PREVIEWS..] {
+                            li.row {
+                                a.grow href={ "/change/" (c.seq) } {
+                                    (view::address(&c.url))
+                                    div.sub { (view::when(c.detected_at)) }
+                                }
+                                (view::change_badge(c.silent, &c.summary))
+                                (view::button(&ui, "/review", &[("seq", &c.seq.to_string())], "Mark as reviewed", "ghost small", None))
+                            }
+                        }
+                    }
+                }
                 @if to_review > review.len() as u64 {
                     p.muted { "And " (to_review - review.len() as u64) " older ones; mark these as reviewed to see them." }
                 }
             }
+        }
         }
         @if !alerts.is_empty() {
             section {

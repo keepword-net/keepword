@@ -186,7 +186,11 @@ fn entry_row(e: &Entry<'_>) -> Markup {
                     @match e.watch {
                         Some(w) => {
                             (view::every(w.every_secs))
-                            " · checked " @match w.last_run { Some(t) => { (view::when(t)) } None => { "not yet" } }
+                            " · checked "
+                            @match w.last_run.or(e.summary.map(|s| s.last_capture)) {
+                                Some(t) => { (view::when(t)) }
+                                None => { "not yet" }
+                            }
                         }
                         None => { "not watched" }
                     }
@@ -322,11 +326,13 @@ pub(super) async fn detail(
     }
     // Ask the witnesses assigned to it for their latest captures, for the
     // next look: the page doesn't wait for them.
-    let n = Arc::clone(node);
-    let u = url.clone();
-    tokio::spawn(async move {
-        let _ = tokio::time::timeout(Duration::from_secs(30), n.refresh_url(&u)).await;
-    });
+    if !node.store.peers()?.is_empty() {
+        let n = Arc::clone(node);
+        let u = url.clone();
+        tokio::spawn(async move {
+            let _ = tokio::time::timeout(Duration::from_secs(30), n.refresh_url(&u)).await;
+        });
+    }
     let latest = hist.last();
     let title = match latest {
         Some(r) => node
@@ -434,7 +440,7 @@ fn status(ui: &Ui, u: &str, watch: Option<&Watch>, last: Option<i64>) -> Markup 
                     "This node checks this page for the network, " (view::every(w.every_secs))
                     @if let Some(t) = w.expires_at { ", until " (view::absolute(t)) } "."
                 }
-                (last_check(w))
+                (last_check(w, last))
                 div.actions {
                     (check)
                     (watch_form(ui, u, w.every_secs, "Watch it myself"))
@@ -449,7 +455,7 @@ fn status(ui: &Ui, u: &str, watch: Option<&Watch>, last: Option<i64>) -> Markup 
                     }
                     "."
                 }
-                (last_check(w))
+                (last_check(w, last))
                 div.actions {
                     (check)
                     (watch_form(ui, u, w.every_secs, "Save"))
@@ -471,9 +477,9 @@ fn status(ui: &Ui, u: &str, watch: Option<&Watch>, last: Option<i64>) -> Markup 
     }
 }
 
-fn last_check(w: &Watch) -> Markup {
+fn last_check(w: &Watch, last: Option<i64>) -> Markup {
     html! {
-        @match (&w.last_error, w.last_run) {
+        @match (&w.last_error, w.last_run.or(last)) {
             (Some(e), _) => { p.notice.error.small { b { "The last check failed: " } (e) } }
             (None, Some(t)) => { p.muted.small { "Last checked " (view::when(t)) "." } }
             (None, None) => { p.muted.small { "Not checked yet." } }
