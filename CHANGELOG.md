@@ -24,7 +24,8 @@ only change incompatibly in a new major version.
 - **A node renews its network requests for the pages it still watches**,
   with a quarter of their time left, for as long again: a page asked to
   the network when it was added stays watched by other witnesses as long
-  as by this node. A request for a page not watched here still runs out.
+  as by this node, so asking for one takes no duration any more. A
+  request for a page not watched here still runs out.
 
 ### Changed
 

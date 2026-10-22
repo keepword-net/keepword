@@ -638,3 +638,29 @@ async fn added_pages_are_asked_to_the_network_unless_private_or_over_the_cap() {
     let page = get(&app, "/pages", "").await.body;
     assert!(page.contains(r#"name="network" disabled>"#) && page.contains("none left"));
 }
+
+#[tokio::test]
+async fn a_watched_page_is_asked_for_as_long_as_it_is_watched() {
+    let t = tempfile::tempdir().unwrap();
+    let mut cfg = Config::default();
+    cfg.beacon.drand_url = None;
+    cfg.network.peers = vec!["https://seed.example".into()];
+    Node::init(t.path(), &cfg).unwrap();
+    let n = Arc::new(Node::open(t.path()).unwrap());
+    let app = ui(&n, UiAuth::LocalOnly);
+    let url = "https://a.example/terms";
+    n.store
+        .watch_add(url, 3600, false, keepword_core::now_ms())
+        .unwrap();
+    // Renewed while watched: no "for how long" to choose.
+    let page = get(&app, &format!("/page?u={url}"), "").await.body;
+    assert!(!page.contains(r#"<select name="days">"#), "{page}");
+    assert!(page.contains("for as long as you watch the page"));
+    // Any address: how long, and that watched ones are renewed.
+    let network = get(&app, "/network", "").await.body;
+    assert!(network.contains(r#"<select name="days">"#));
+    assert!(
+        network.contains("asked again while you watch it")
+            && network.contains("goes to every witness")
+    );
+}

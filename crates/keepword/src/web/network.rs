@@ -47,6 +47,14 @@ pub(super) fn request_form(ui: &Ui, url: Option<&str>, every: u64) -> Markup {
             }
         };
     }
+    // A request for a page this node watches is asked again while it does
+    // (`Node::renew_requests`): how long to ask for would mean nothing.
+    let watched_here = url.is_some_and(|u| {
+        ui.node
+            .store
+            .watches()
+            .is_ok_and(|ws| ws.iter().any(|w| w.url == u && w.request_id.is_none()))
+    });
     html! {
         form.stack method="post" action="/network/request" {
             (view::csrf(ui))
@@ -60,17 +68,27 @@ pub(super) fn request_form(ui: &Ui, url: Option<&str>, every: u64) -> Markup {
             }
             div.row-fields {
                 label { "Check" (view::interval_select("every", every)) }
-                label { "For"
-                    select name="days" {
-                        @for d in [1u64, 3, 7, 14, 30] {
-                            option value=(d) selected[d == REQUEST_DAYS] { (d) (if d == 1 { " day" } else { " days" }) }
+                @if watched_here {
+                    input type="hidden" name="days" value=(REQUEST_DAYS);
+                } @else {
+                    label { "For"
+                        select name="days" {
+                            @for d in [1u64, 3, 7, 14, 30] {
+                                option value=(d) selected[d == REQUEST_DAYS] { (d) (if d == 1 { " day" } else { " days" }) }
+                            }
                         }
                     }
                 }
             }
             p.muted.small {
                 "Witnesses drawn at random, in different countries and networks, capture it too, "
-                "so nobody has to take this node's word for what the page said."
+                "so nobody has to take this node's word for what the page said. "
+                "Its address goes to every witness. "
+                @if watched_here {
+                    "It's asked again for as long as you watch the page; withdraw it on the Network page to stop."
+                } @else {
+                    "For a page this node watches, it's asked again while you watch it."
+                }
             }
             div { button.btn.primary.small type="submit" { "Ask the network" } }
         }
