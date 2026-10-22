@@ -439,6 +439,26 @@ impl Store {
         )
     }
 
+    /// A URL's newest captures, newest first.
+    pub fn history_latest(&self, url: &str, limit: u32) -> Result<Vec<Record>> {
+        self.records(
+            &format!(
+                "{} WHERE a.url = ?1 ORDER BY a.fetched_at DESC, l.idx DESC LIMIT ?2",
+                Self::SELECT
+            ),
+            params![url, limit],
+        )
+    }
+
+    pub fn capture_count(&self, url: &str) -> Result<u64> {
+        let n: i64 = self.db().query_row(
+            "SELECT COUNT(*) FROM attestations WHERE url = ?1",
+            [url],
+            |r| r.get(0),
+        )?;
+        Ok(n as u64)
+    }
+
     pub fn latest(&self, url: &str, method: CaptureMethod) -> Result<Option<Record>> {
         Ok(self
             .records(
@@ -557,13 +577,51 @@ impl Store {
     }
 
     /// Mark changes as reviewed: the one numbered `seq`, else all of
-    /// `url`'s, else all. Returns how many weren't reviewed before.
-    pub fn mark_reviewed(&self, seq: Option<i64>, url: Option<&str>, at_ms: i64) -> Result<usize> {
+    /// `url`'s, else all; and of those, only up to change `upto`, the newest
+    /// the reviewer was shown. Returns how many weren't reviewed before.
+    pub fn mark_reviewed(
+        &self,
+        seq: Option<i64>,
+        url: Option<&str>,
+        upto: Option<i64>,
+        at_ms: i64,
+    ) -> Result<usize> {
         Ok(self.db().execute(
-            "UPDATE changes SET reviewed_at = ?3
-             WHERE reviewed_at IS NULL AND (?1 IS NULL OR seq = ?1) AND (?2 IS NULL OR url = ?2)",
-            params![seq, url, at_ms],
+            "UPDATE changes SET reviewed_at = ?4
+             WHERE reviewed_at IS NULL AND (?1 IS NULL OR seq = ?1) AND (?2 IS NULL OR url = ?2)
+                AND (?3 IS NULL OR seq <= ?3)",
+            params![seq, url, upto, at_ms],
         )?)
+    }
+
+    /// The URL's changes found right after and right before change `seq`.
+    pub fn change_neighbors(&self, seq: i64) -> Result<(Option<i64>, Option<i64>)> {
+        let db = self.db();
+        let next = |sql: &str| -> rusqlite::Result<Option<i64>> {
+            db.query_row(sql, [seq], |r| r.get(0)).optional()
+        };
+        Ok((
+            next(
+                "SELECT n.seq FROM changes c JOIN changes n ON n.url = c.url
+                 WHERE c.seq = ?1 AND (n.detected_at, n.seq) > (c.detected_at, c.seq)
+                 ORDER BY n.detected_at, n.seq LIMIT 1",
+            )?,
+            next(
+                "SELECT n.seq FROM changes c JOIN changes n ON n.url = c.url
+                 WHERE c.seq = ?1 AND (n.detected_at, n.seq) < (c.detected_at, c.seq)
+                 ORDER BY n.detected_at DESC, n.seq DESC LIMIT 1",
+            )?,
+        ))
+    }
+
+    /// The change recorded between two captures, if one was.
+    pub fn change_between(&self, from: &Digest, to: &Digest) -> Result<Option<ChangeRow>> {
+        Ok(self
+            .query_changes(
+                "WHERE from_id = ?1 AND to_id = ?2 LIMIT 1",
+                params![from.as_bytes(), to.as_bytes()],
+            )?
+            .pop())
     }
 
     fn query_changes(&self, filter: &str, p: impl rusqlite::Params) -> Result<Vec<ChangeRow>> {
@@ -880,17 +938,34 @@ mod tests {
         };
         let a = "https://a.example/";
         let first = s.record_change(&change(a, 1)).unwrap();
-        s.record_change(&change(a, 2)).unwrap();
-        s.record_change(&change("https://b.example/", 3)).unwrap();
+        let second = s.record_change(&change(a, 2)).unwrap();
+        let other = s.record_change(&change("https://b.example/", 3)).unwrap();
         assert_eq!(s.changes_to_review_count().unwrap(), 3);
-        assert_eq!(s.mark_reviewed(Some(first), None, 10).unwrap(), 1);
+        // A page's changes in order, whatever else changed between them.
+        assert_eq!(s.change_neighbors(first).unwrap(), (Some(second), None));
+        assert_eq!(s.change_neighbors(second).unwrap(), (None, Some(first)));
+        assert_eq!(s.change_neighbors(other).unwrap(), (None, None));
+        assert_eq!(
+            s.change_between(&Digest::of(b"a"), &Digest::of(b"b"))
+                .unwrap()
+                .map(|c| c.url),
+            Some(a.to_string())
+        );
+        assert!(
+            s.change_between(&Digest::of(b"b"), &Digest::of(b"a"))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(s.mark_reviewed(Some(first), None, None, 10).unwrap(), 1);
         assert_eq!(s.change(first).unwrap().unwrap().reviewed_at, Some(10));
-        assert_eq!(s.mark_reviewed(Some(first), None, 11).unwrap(), 0);
-        assert_eq!(s.mark_reviewed(None, Some(a), 12).unwrap(), 1);
+        assert_eq!(s.mark_reviewed(Some(first), None, None, 11).unwrap(), 0);
+        assert_eq!(s.mark_reviewed(None, Some(a), None, 12).unwrap(), 1);
         let left = s.changes_to_review(10).unwrap();
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].url, "https://b.example/");
-        assert_eq!(s.mark_reviewed(None, None, 13).unwrap(), 1);
+        // Not changes found after the reviewer looked.
+        assert_eq!(s.mark_reviewed(None, None, Some(second), 13).unwrap(), 0);
+        assert_eq!(s.mark_reviewed(None, None, Some(other), 13).unwrap(), 1);
         assert_eq!(s.changes_to_review_count().unwrap(), 0);
     }
 
@@ -936,6 +1011,30 @@ mod tests {
         assert_eq!(size_at(100), Some(1));
         assert_eq!(size_at(250), Some(2));
         assert_eq!(size_at(1000), Some(3));
+    }
+
+    #[test]
+    fn a_urls_latest_captures() {
+        let t = tempfile::tempdir().unwrap();
+        let s = Store::open(t.path()).unwrap();
+        let kp = Keypair::generate().unwrap();
+        for (i, when) in [100, 300, 200].into_iter().enumerate() {
+            s.commit(&att(&kp, "https://a.example/", &[i as u8], when), &kp, when)
+                .unwrap();
+        }
+        s.commit(&att(&kp, "https://b.example/", b"b", 400), &kp, 400)
+            .unwrap();
+        let at = |rs: Vec<Record>| -> Vec<i64> {
+            rs.iter()
+                .map(|r| r.signed.attestation.fetched_at_ms)
+                .collect()
+        };
+        assert_eq!(
+            at(s.history_latest("https://a.example/", 2).unwrap()),
+            [300, 200]
+        );
+        assert_eq!(s.capture_count("https://a.example/").unwrap(), 3);
+        assert_eq!(s.capture_count("https://c.example/").unwrap(), 0);
     }
 
     #[test]

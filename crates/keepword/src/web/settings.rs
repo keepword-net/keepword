@@ -8,7 +8,9 @@ use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use maud::{Markup, html};
 
-use super::auth::{Post, UiAuth, check_new_password, flash, relogin};
+use super::auth::{
+    Post, UiAuth, check_new_password, check_password, flash, relogin, store_password,
+};
 use super::view::{self, Ctx, Nav};
 use super::{RESTART, Ui, WebResult};
 use crate::config::{CONFIG_FILE, Config, Retain};
@@ -288,27 +290,19 @@ pub(super) async fn save(State(ui): State<Ui>, form: Post) -> WebResult<Response
 
 fn saved_message(ui: &Ui) -> &'static str {
     if ui.opts.supervised {
-        "Saved. Restart Keepword to apply the changes."
+        "Saved. Restart Keepword, with the button above, to apply the changes."
     } else {
-        "Saved. Restart Keepword to apply the changes: they take effect when it starts."
+        "Saved. The changes take effect when Keepword starts again."
     }
 }
 
 pub(super) async fn save_file(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
     // Browsers send line breaks as CRLF.
     let text = form.get("toml").replace("\r\n", "\n") + "\n";
-    let checked = toml::from_str::<Config>(&text)
-        .map_err(anyhow::Error::from)
-        .and_then(|c| c.validate().map(|()| c));
-    if let Err(e) = checked {
-        return Ok(flash(
-            "/settings#file",
-            "error",
-            format!("Not saved: {e:#}"),
-        ));
-    }
-    std::fs::write(ui.node.dir.join(CONFIG_FILE), text)?;
-    Ok(flash("/settings", "ok", saved_message(&ui)))
+    Ok(match Config::save_text(&ui.node.dir, &text) {
+        Ok(()) => flash("/settings", "ok", saved_message(&ui)),
+        Err(e) => flash("/settings#file", "error", format!("Not saved: {e:#}")),
+    })
 }
 
 pub(super) async fn password(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
@@ -322,16 +316,16 @@ pub(super) async fn password(State(ui): State<Ui>, form: Post) -> WebResult<Resp
                 "The password is set by KEEPWORD_UI_PASSWORD.",
             ));
         }
-        UiAuth::Password if !ui.auth.verify(form.get("current")) => {
+        UiAuth::Password if !check_password(&ui, form.raw("current")).await => {
             tokio::time::sleep(Duration::from_secs(1)).await;
             return Ok(flash(back, "error", "The current password isn't right."));
         }
         _ => {}
     }
-    if let Err(msg) = check_new_password(form.get("password"), form.get("again")) {
+    if let Err(msg) = check_new_password(form.raw("password"), form.raw("again")) {
         return Ok(flash(back, "error", msg));
     }
-    ui.auth.set_password(form.get("password"))?;
+    store_password(&ui, form.raw("password")).await?;
     Ok(relogin(&ui, flash("/settings", "ok", "Password saved.")))
 }
 

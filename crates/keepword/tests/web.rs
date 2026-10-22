@@ -356,3 +356,155 @@ async fn checking_now_and_stopping() {
     .await;
     assert_eq!(r.status, StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn a_change_without_its_content_still_shows() {
+    let t = tempfile::tempdir().unwrap();
+    let n = node(t.path());
+    let app = ui(&n, UiAuth::LocalOnly);
+    let body = Arc::new(Mutex::new("<p>one</p>".to_string()));
+    let url = site(body.clone()).await;
+    n.capture(&url, false).await.unwrap();
+    *body.lock().unwrap() = "<p>two</p>".into();
+    n.capture(&url, false).await.unwrap();
+    let c = n.store.changes_to_review(1).unwrap().remove(0);
+    let page = format!("/change/{}", c.seq);
+    // An erasure request: the content goes, the records stay.
+    n.store.purge(&url, false).unwrap();
+    assert!(
+        get(&app, "/", "")
+            .await
+            .body
+            .contains("didn't keep the pages' text")
+    );
+    let shown = get(&app, &page, "").await;
+    assert!(shown.body.contains("keeps no text"), "{}", shown.body);
+    assert!(!shown.body.contains("read the same"));
+    let diff = format!("/diff?from={}&to={}", c.to_id, c.from_id);
+    assert!(get(&app, &diff, "").await.body.contains("keeps no text"));
+    // The records too, as `keepword purge --forget` in another process
+    // would while this page is drawn.
+    let db = rusqlite::Connection::open(t.path().join("index.sqlite")).unwrap();
+    db.execute("DELETE FROM attestations", []).unwrap();
+    let home = get(&app, "/", "").await;
+    assert_eq!(home.status, StatusCode::OK);
+    assert!(
+        home.body.contains("no longer has these captures"),
+        "{}",
+        home.body
+    );
+    let gone = get(&app, &page, "").await;
+    assert_eq!(gone.status, StatusCode::OK);
+    assert!(gone.body.contains("no longer has these captures"));
+}
+
+#[tokio::test]
+async fn settings_are_saved_checked_and_kept_as_written() {
+    let t = tempfile::tempdir().unwrap();
+    let n = node(t.path());
+    let app = ui(&n, UiAuth::LocalOnly);
+    let token = csrf(&get(&app, "/settings", "").await.body);
+    let form = |asn: &'static str| {
+        vec![
+            ("country", "de"),
+            ("asn", asn),
+            ("mode", "relay"),
+            ("seeds", "on"),
+            ("peers", "https://a.example\nhttps://b.example"),
+            ("retain", "full"),
+            ("timeout", "1000"),
+            ("user_agent", ""),
+        ]
+    };
+    let mut bad = form("Telekom");
+    bad.push(("csrf", &token));
+    post(&app, "/settings", "", &bad).await;
+    assert!(Config::load(t.path()).unwrap().vantage.asn.is_none());
+    let mut ok = form("AS3320");
+    ok.push(("csrf", &token));
+    let saved = post(&app, "/settings", "", &ok).await;
+    assert_eq!(saved.location, "/settings");
+    let c = Config::load(t.path()).unwrap();
+    assert_eq!(c.vantage.country.as_deref(), Some("DE"));
+    assert_eq!(c.vantage.asn, Some(3320));
+    assert_eq!(c.network.relay.as_deref(), Some("auto"));
+    assert_eq!(c.network.peers, ["https://a.example", "https://b.example"]);
+    assert_eq!(c.content.retain, Retain::Full);
+    assert_eq!(c.capture.timeout_secs, 300);
+    // The node runs on what it read at start: a restart is pending.
+    assert!(
+        get(&app, "/settings", "")
+            .await
+            .body
+            .contains("take effect after a restart")
+    );
+    // The file as written, comments and all, once it checks out.
+    let file = t.path().join("keepword.toml");
+    let before = std::fs::read_to_string(&file).unwrap();
+    let typo = format!("{before}\n[network]\nendpont = \"x\"\n");
+    post(
+        &app,
+        "/settings/file",
+        "",
+        &[("csrf", &token), ("toml", &typo)],
+    )
+    .await;
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+    let commented = format!("# kept\r\n{before}");
+    post(
+        &app,
+        "/settings/file",
+        "",
+        &[("csrf", &token), ("toml", &commented)],
+    )
+    .await;
+    assert!(
+        std::fs::read_to_string(&file)
+            .unwrap()
+            .starts_with("# kept\n")
+    );
+}
+
+#[tokio::test]
+async fn a_password_is_used_as_typed() {
+    let t = tempfile::tempdir().unwrap();
+    let app = ui(&node(t.path()), UiAuth::LocalOnly);
+    let token = csrf(&get(&app, "/settings", "").await.body);
+    let pw = " spaced out ";
+    let set = post(
+        &app,
+        "/settings/password",
+        "",
+        &[("csrf", &token), ("password", pw), ("again", pw)],
+    )
+    .await;
+    // Now it asks, and the cookie from setting it logs in.
+    let session = set
+        .cookies
+        .iter()
+        .find(|c| c.starts_with("keepword_session="))
+        .unwrap()
+        .clone();
+    assert_eq!(get(&app, "/", "").await.location, "/login?next=%2F");
+    assert_eq!(get(&app, "/", &session).await.status, StatusCode::OK);
+    let trimmed = post(
+        &app,
+        "/login",
+        "",
+        &[("csrf", &token), ("password", pw.trim())],
+    )
+    .await;
+    assert!(
+        trimmed
+            .cookies
+            .iter()
+            .all(|c| !c.starts_with("keepword_session="))
+    );
+    let typed = post(&app, "/login", "", &[("csrf", &token), ("password", pw)]).await;
+    assert!(
+        typed
+            .cookies
+            .iter()
+            .any(|c| c.starts_with("keepword_session="))
+    );
+}

@@ -24,9 +24,9 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
     let last_check = watches.iter().filter_map(|w| w.last_run).max();
     let review = store.changes_to_review(TO_REVIEW)?;
     let to_review = store.changes_to_review_count()?;
+    let newest = review.iter().map(|c| c.seq).max().unwrap_or(0);
     let peers = store.peers()?;
-    let net = &node.config.network;
-    let joined = net.endpoint.is_some() || net.relay.is_some() || !peers.is_empty();
+    let joined = super::joined(node);
     let since = now_ms() - 7 * 86_400_000;
     let alerts: Vec<_> = store
         .alerts(50)?
@@ -95,7 +95,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             div.section-head {
                 h2 { "To review" }
                 @if to_review > 1 {
-                    (view::button(&ui, "/review", &[("all", "1")], "Mark all as reviewed", "ghost small",
+                    (view::button(&ui, "/review", &[("all", "1"), ("upto", &newest.to_string())], "Mark all as reviewed", "ghost small",
                         Some("Mark every change as reviewed?")))
                 }
             }
@@ -154,16 +154,17 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
 /// A change to review: where, what kind, the first changed lines.
 fn review_card(ui: &Ui, c: &keepword_store::ChangeRow) -> WebResult<Markup> {
     let l = load(&ui.node, &c.from_id, &c.to_id)?;
+    let title = l.as_ref().and_then(|l| l.title.as_deref());
     let href = format!("/change/{}", c.seq);
     Ok(html! {
         article.card.change {
             div.card-head {
                 div {
                     a.title href=(href) {
-                        @if let Some(t) = &l.title { (t) } @else { (view::address(&c.url)) }
+                        @if let Some(t) = title { (t) } @else { (view::address(&c.url)) }
                     }
                     div.sub {
-                        @if l.title.is_some() { (view::address(&c.url)) " · " }
+                        @if title.is_some() { (view::address(&c.url)) " · " }
                         (view::when(c.detected_at))
                     }
                 }
@@ -172,9 +173,10 @@ fn review_card(ui: &Ui, c: &keepword_store::ChangeRow) -> WebResult<Markup> {
                     (view::line_counts(c.added, c.removed))
                 }
             }
-            @match &l.change {
-                Some(d) => { (view::preview(d, 3)) }
-                None => { p.muted.small { "This node didn't keep the pages' text, so it can't show what changed." } }
+            @match l.as_ref().map(|l| &l.change) {
+                Some(Some(d)) => { (view::preview(d, 3)) }
+                Some(None) => { p.muted.small { "This node didn't keep the pages' text, so it can't show what changed." } }
+                None => { p.muted.small { (super::change::GONE) } }
             }
             div.actions {
                 a.btn.small href=(href) { "See the change" }
@@ -213,7 +215,9 @@ pub(super) async fn review(State(ui): State<Ui>, form: Post) -> WebResult<Respon
     if seq.is_none() && url.is_none() && !form.on("all") {
         return Err(super::bad_request("Nothing to mark as reviewed."));
     }
-    let n = ui.node.store.mark_reviewed(seq, url, now_ms())?;
+    // Not changes found after the page with the button was shown.
+    let upto = form.get("upto").parse::<i64>().ok();
+    let n = ui.node.store.mark_reviewed(seq, url, upto, now_ms())?;
     let back = safe_back(form.get("back"), "/");
     Ok(flash(
         &back,

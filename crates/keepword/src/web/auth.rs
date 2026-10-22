@@ -13,6 +13,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use argon2::Argon2;
@@ -156,6 +157,20 @@ impl Auth {
     }
 }
 
+/// Whether `password` is the password. Argon2 takes tens of milliseconds and
+/// 19 MiB, so not on the async threads.
+pub(super) async fn check_password(ui: &Ui, password: &str) -> bool {
+    let (auth, pw) = (Arc::clone(&ui.auth), password.to_string());
+    tokio::task::spawn_blocking(move || auth.verify(&pw))
+        .await
+        .unwrap_or(false)
+}
+
+pub(super) async fn store_password(ui: &Ui, password: &str) -> Result<()> {
+    let (auth, pw) = (Arc::clone(&ui.auth), password.to_string());
+    tokio::task::spawn_blocking(move || auth.set_password(&pw)).await?
+}
+
 fn hash(password: &str) -> Result<String> {
     Ok(Argon2::default()
         .hash_password(password.as_bytes())
@@ -252,10 +267,13 @@ pub(super) fn redirect(to: &str) -> Response {
     (StatusCode::SEE_OTHER, [(header::LOCATION, to.to_string())]).into_response()
 }
 
+/// The message a form left. Another app on the same host can set cookies
+/// for it too (they ignore ports): only the kinds the UI sets are taken.
 fn read_flash(headers: &HeaderMap) -> Option<(String, String)> {
     let v = cookie(headers, FLASH)?;
     url::form_urlencoded::parse(v.as_bytes())
         .next()
+        .filter(|(k, _)| k == "ok" || k == "error")
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
 }
 
@@ -351,6 +369,11 @@ impl Post {
     pub fn on(&self, name: &str) -> bool {
         !self.get(name).is_empty()
     }
+
+    /// A field as typed, for passwords.
+    pub fn raw(&self, name: &str) -> &str {
+        self.0.get(name).map_or("", String::as_str)
+    }
 }
 
 impl FromRequest<Ui> for Post {
@@ -407,8 +430,13 @@ pub(super) async fn login_page(
                 button.btn.primary type="submit" data-busy="Checking…" { "Log in" }
             }
             p.muted.small {
-                "Forgot it? Delete the file " code { (PASSWORD_FILE) } " in Keepword's data folder and \
-                 open this page again to choose a new one."
+                @if ui.auth.password_from_env() {
+                    "Forgot it? It is set by " code { "KEEPWORD_UI_PASSWORD" } " in Keepword's settings, \
+                     where the app or container is set up."
+                } @else {
+                    "Forgot it? Delete the file " code { (PASSWORD_FILE) } " in Keepword's data folder and \
+                     open this page again to choose a new one."
+                }
             }
         },
     )
@@ -417,9 +445,8 @@ pub(super) async fn login_page(
 
 pub(super) async fn login(State(ui): State<Ui>, form: Post) -> Response {
     let _one_at_a_time = ui.auth.attempts.lock().await;
-    let pw = form.0.get("password").map_or("", String::as_str);
     let next = next_page(form.0.get("next"));
-    if ui.auth.verify(pw)
+    if check_password(&ui, form.raw("password")).await
         && let Some(c) = ui.auth.session_cookie()
     {
         let mut r = redirect(&next);
@@ -480,11 +507,11 @@ pub(super) async fn setup(State(ui): State<Ui>, form: Post) -> Response {
     if ui.auth.mode() != UiAuth::Password || ui.auth.has_password() {
         return redirect("/");
     }
-    let pw = form.0.get("password").map_or("", String::as_str);
-    if let Err(msg) = check_new_password(pw, form.0.get("again").map_or("", String::as_str)) {
+    let pw = form.raw("password");
+    if let Err(msg) = check_new_password(pw, form.raw("again")) {
         return flash("/setup", "error", msg);
     }
-    if let Err(e) = ui.auth.set_password(pw) {
+    if let Err(e) = store_password(&ui, pw).await {
         return flash("/setup", "error", format!("{e:#}"));
     }
     let mut r = flash("/", "ok", "Password set. Welcome!");

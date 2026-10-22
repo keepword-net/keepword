@@ -181,6 +181,14 @@ impl IntoResponse for WebError {
 
 type WebResult<T> = Result<T, WebError>;
 
+/// The node takes part in the network: `keepword serve` federates when it
+/// can be reached or knows witnesses to contact. Otherwise it works alone,
+/// and nothing the UI does should reach the network.
+fn joined(node: &Node) -> bool {
+    let net = &node.config.network;
+    net.endpoint.is_some() || net.relay.is_some() || !net.peers.is_empty()
+}
+
 fn not_found(what: &str) -> WebError {
     WebError(StatusCode::NOT_FOUND, format!("{what} not found."))
 }

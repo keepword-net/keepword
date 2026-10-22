@@ -38,9 +38,11 @@ pub(super) fn add_form(ui: &Ui, open: bool) -> Markup {
                     }
                 }
             }
-            label.check {
-                input type="checkbox" name="network";
-                " Also ask the network to watch them for " (REQUEST_DAYS) " days, so independent witnesses check them too"
+            @if super::joined(&ui.node) {
+                label.check {
+                    input type="checkbox" name="network";
+                    " Also ask the network to watch them for " (REQUEST_DAYS) " days, so independent witnesses check them too"
+                }
             }
             div { button.btn.primary type="submit" data-busy="Adding…" { "Add pages" } }
         }
@@ -96,7 +98,8 @@ pub(super) async fn list(
     }
     let all: Vec<Entry<'_>> = by_url.into_values().collect();
     let show = q.get("show").map_or("all", String::as_str);
-    let search = q.get("q").map_or("", |s| s.trim()).to_lowercase();
+    let typed = q.get("q").map_or("", |s| s.trim());
+    let search = typed.to_lowercase();
     let filters: [(&str, &str, usize); 5] = [
         ("all", "All", all.len()),
         (
@@ -152,7 +155,7 @@ pub(super) async fn list(
         }
         @if !all.is_empty() {
             form.filters method="get" action="/pages" {
-                input type="search" name="q" value=(search) placeholder="Search addresses" data-filter=".list > li";
+                input type="search" name="q" value=(typed) placeholder="Search addresses" data-filter=".list > li";
                 input type="hidden" name="show" value=(show);
                 noscript { button.btn.small type="submit" { "Search" } }
             }
@@ -256,11 +259,12 @@ pub(super) async fn add(State(ui): State<Ui>, form: Post) -> WebResult<Response>
         ));
     }
     let now = now_ms();
+    let ask = form.on("network") && super::joined(&ui.node);
     let mut asked = 0;
     let mut failed = Vec::new();
     for u in &urls {
         ui.node.store.watch_add(u, every, render, now)?;
-        if form.on("network") {
+        if ask {
             let ms = (REQUEST_DAYS * 86_400_000) as i64;
             match ui.node.replace_request(u, every, ms, render) {
                 Ok(_) => asked += 1,
@@ -319,7 +323,13 @@ pub(super) async fn detail(
         .to_string();
     let node = &ui.node;
     let watch = node.store.watches()?.into_iter().find(|w| w.url == url);
-    let hist = node.store.history(&url)?;
+    // A page checked every quarter hour has 35 000 captures a year: only
+    // the latest are shown, `keepword history` lists them all.
+    let more = q.contains_key("more");
+    let hist = node
+        .store
+        .history_latest(&url, if more { 500 } else { 20 })?;
+    let captures = node.store.capture_count(&url)?;
     let verdict = node.verdict(&url)?;
     if hist.is_empty() && watch.is_none() && verdict.considered == 0 {
         return Err(not_found("This page"));
@@ -333,7 +343,7 @@ pub(super) async fn detail(
             let _ = tokio::time::timeout(Duration::from_secs(30), n.refresh_url(&u)).await;
         });
     }
-    let latest = hist.last();
+    let latest = hist.first();
     let title = match latest {
         Some(r) => node
             .normalized_text(&r.signed.attestation)?
@@ -343,7 +353,7 @@ pub(super) async fn detail(
     };
     let changes = node.store.changes(Some(&url), 500)?;
     let to_review = changes.iter().filter(|c| c.reviewed_at.is_none()).count();
-    let all = q.contains_key("all");
+    let newest = changes.iter().map(|c| c.seq).max().unwrap_or(0);
     let here = view::page_link(&url);
     let u = url.as_str();
     let body = html! {
@@ -362,7 +372,7 @@ pub(super) async fn detail(
             div.section-head {
                 h2 { "Changes" }
                 @if to_review > 1 {
-                    (view::button(&ui, "/review", &[("url", u), ("back", &here)],
+                    (view::button(&ui, "/review", &[("url", u), ("upto", &newest.to_string()), ("back", &here)],
                         "Mark all as reviewed", "ghost small", None))
                 }
             }
@@ -379,14 +389,14 @@ pub(super) async fn detail(
         section {
             div.section-head {
                 h2 { "Evidence" }
-                span.muted.small { (hist.len()) " " (if hist.len() == 1 { "capture" } else { "captures" }) }
+                span.muted.small { (captures) " " (if captures == 1 { "capture" } else { "captures" }) }
             }
             p.muted.small {
                 "Each capture is signed by this node and logged where anyone can check it. "
                 "Open one to download its evidence bundle."
             }
             ul.list {
-                @for r in hist.iter().rev().take(if all { usize::MAX } else { 20 }) {
+                @for r in &hist {
                     @let a = &r.signed.attestation;
                     li.row {
                         a.grow href={ "/a/" (r.id) } {
@@ -397,8 +407,12 @@ pub(super) async fn detail(
                     }
                 }
             }
-            @if hist.len() > 20 && !all {
-                a.btn.ghost.small href={ (here) "&all=1" } { "Show all " (hist.len()) }
+            @if captures > hist.len() as u64 {
+                @if more {
+                    p.muted.small { "The latest " (hist.len()) " of " (captures) ". " code { "keepword history" } " lists them all." }
+                } @else {
+                    a.btn.ghost.small href={ (here) "&more=1" } { "Show more" }
+                }
             }
         }
         details.danger {

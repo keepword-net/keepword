@@ -19,33 +19,40 @@ use crate::Node;
 pub(super) struct Loaded {
     pub from: Record,
     pub to: Record,
-    /// `None` when the node didn't keep the text of one of them.
+    /// The node kept both versions' text, so `change` says what changed:
+    /// `None` when nothing did.
+    pub kept: bool,
     pub change: Option<Change>,
     /// The newer version's title.
     pub title: Option<String>,
 }
 
-pub(super) fn load(node: &Node, from: &Digest, to: &Digest) -> WebResult<Loaded> {
-    let get = |id: &Digest| -> WebResult<Record> {
-        node.store.get(id)?.ok_or_else(|| not_found("A capture"))
+/// Two captures and what changed between them; `None` when the node no
+/// longer has one, deleted with its page's records.
+pub(super) fn load(node: &Node, from: &Digest, to: &Digest) -> WebResult<Option<Loaded>> {
+    let (Some(from), Some(to)) = (node.store.get(from)?, node.store.get(to)?) else {
+        return Ok(None);
     };
-    let (from, to) = (get(from)?, get(to)?);
     let (a, b) = (
         node.normalized_text(&from.signed.attestation)?,
         node.normalized_text(&to.signed.attestation)?,
     );
     let title = b.as_deref().and_then(view::title_of);
-    let change = match (a, b) {
-        (Some(a), Some(b)) => diff::diff(&a, &b),
-        _ => None,
+    let (kept, change) = match (a, b) {
+        (Some(a), Some(b)) => (true, diff::diff(&a, &b)),
+        _ => (false, None),
     };
-    Ok(Loaded {
+    Ok(Some(Loaded {
         from,
         to,
+        kept,
         change,
         title,
-    })
+    }))
 }
+
+pub(super) const GONE: &str =
+    "This node no longer has these captures: they were deleted with the page's records.";
 
 /// A path of the UI to go back to after a form, never another site.
 pub(super) fn safe_back(back: &str, default: &str) -> String {
@@ -69,15 +76,12 @@ pub(super) async fn page(
         .change(seq)?
         .ok_or_else(|| not_found("This change"))?;
     let l = load(&ui.node, &row.from_id, &row.to_id)?;
-    // Newest first.
-    let all = ui.node.store.changes(Some(&row.url), 10_000)?;
-    let at = all.iter().position(|c| c.seq == seq);
-    let newer = at.and_then(|i| i.checked_sub(1)).and_then(|i| all.get(i));
-    let older = at.and_then(|i| all.get(i + 1));
+    let (newer, older) = ui.node.store.change_neighbors(seq)?;
     let here = format!("/change/{seq}");
     let mode = q.get("view").map_or("", String::as_str);
+    let title = l.as_ref().and_then(|l| l.title.as_deref());
     let body = html! {
-        (heading(&row.url, &l))
+        (heading(&row.url, title))
         div.card {
             div.card-head {
                 div.tags {
@@ -86,7 +90,10 @@ pub(super) async fn page(
                 }
                 div.sub { "Found " (view::when(row.detected_at)) }
             }
-            (explain(&row.summary, row.silent, &l))
+            @match &l {
+                Some(l) => { (explain(&row.summary, row.silent, l)) }
+                None => { p.muted { (GONE) } }
+            }
             div.actions {
                 @match row.reviewed_at {
                     Some(t) => { span.muted.small { "✓ Reviewed " (view::when(t)) } }
@@ -95,14 +102,19 @@ pub(super) async fn page(
                             "Mark as reviewed", "primary small", None))
                     }
                 }
-                @if let Some(c) = newer { a.btn.ghost.small href={ "/change/" (c.seq) } { "← Newer change" } }
-                @if let Some(c) = older { a.btn.ghost.small href={ "/change/" (c.seq) } { "Older change →" } }
+                @if let Some(s) = newer { a.btn.ghost.small href={ "/change/" (s) } { "← Newer change" } }
+                @if let Some(s) = older { a.btn.ghost.small href={ "/change/" (s) } { "Older change →" } }
             }
         }
-        (body(&here, mode, &l))
+        @if let Some(l) = &l { (body(&here, mode, l)) }
     };
-    let title = l.title.clone().unwrap_or_else(|| "Change".into());
-    Ok(view::page(&ui, &ctx, Nav::Overview, &title, body))
+    Ok(view::page(
+        &ui,
+        &ctx,
+        Nav::Overview,
+        title.unwrap_or("Change"),
+        body,
+    ))
 }
 
 /// Any two captures. A recorded change opens as one.
@@ -117,17 +129,11 @@ pub(super) async fn diff(
             .ok_or_else(|| not_found("A capture"))
     };
     let (from, to) = (id("from")?, id("to")?);
-    let l = load(&ui.node, &from, &to)?;
-    let url = l.to.signed.attestation.url.clone();
-    if let Some(c) = ui
-        .node
-        .store
-        .changes(Some(&url), 10_000)?
-        .into_iter()
-        .find(|c| c.from_id == from && c.to_id == to)
-    {
+    if let Some(c) = ui.node.store.change_between(&from, &to)? {
         return Ok(redirect(&format!("/change/{}", c.seq)));
     }
+    let l = load(&ui.node, &from, &to)?.ok_or_else(|| not_found("A capture"))?;
+    let url = l.to.signed.attestation.url.clone();
     let here = format!("/diff?from={from}&to={to}");
     let mode = q.get("view").map_or("", String::as_str);
     let summary = l
@@ -135,14 +141,11 @@ pub(super) async fn diff(
         .as_ref()
         .map(|c| crate::diff_summary(&l.from.signed.attestation, &l.to.signed.attestation, c));
     let body = html! {
-        (heading(&url, &l))
-        div.card {
-            @match (&l.change, &summary) {
-                (Some(c), Some(s)) => {
-                    div.tags { (view::change_badge(c.is_silent(), s)) (view::line_counts(c.added as u64, c.removed as u64)) }
-                    (explain(s, c.is_silent(), &l))
-                }
-                _ => { p { "These two captures read the same." } }
+        (heading(&url, l.title.as_deref()))
+        @if let (Some(c), Some(s)) = (&l.change, &summary) {
+            div.card {
+                div.tags { (view::change_badge(c.is_silent(), s)) (view::line_counts(c.added as u64, c.removed as u64)) }
+                (explain(s, c.is_silent(), &l))
             }
         }
         (body(&here, mode, &l))
@@ -150,11 +153,11 @@ pub(super) async fn diff(
     Ok(view::page(&ui, &ctx, Nav::Pages, "Compare captures", body))
 }
 
-fn heading(url: &str, l: &Loaded) -> Markup {
+fn heading(url: &str, title: Option<&str>) -> Markup {
     html! {
         nav.crumbs { a href=(view::page_link(url)) { "← " (view::address(url)) } }
         div.head {
-            h1 { @if let Some(t) = &l.title { (t) } @else { (view::address(url)) } }
+            h1 { @if let Some(t) = title { (t) } @else { (view::address(url)) } }
             a.btn.ghost.small href=(url) rel="noreferrer noopener" target="_blank" { "Open the live page ↗" }
         }
     }
@@ -178,6 +181,8 @@ fn explain(summary: &str, silent: bool, l: &Loaded) -> Markup {
                 "The page changed, but it shows no new date and no update notice. "
                 "Read the change closely: this is what Keepword exists to catch."
             }
+        } @else if reasons.is_empty() {
+            p { "The page says it was updated." }
         } @else {
             p { "The page says it was updated: " (reasons.join("; ")) "." }
         }
@@ -216,6 +221,7 @@ fn body(here: &str, mode: &str, l: &Loaded) -> Markup {
                 }
             }
             @match &l.change {
+                None if l.kept => { p { "These two captures read the same." } }
                 None => {
                     p.muted {
                         "This node keeps no text for one of these captures (see "

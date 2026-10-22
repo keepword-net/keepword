@@ -282,8 +282,11 @@ pub(super) fn interval_select(name: &str, secs: u64) -> Markup {
 pub(super) fn address(url: &str) -> Markup {
     let parsed = url::Url::parse(url).ok();
     let host = parsed.as_ref().and_then(|u| {
-        u.host_str()
-            .map(|h| h.trim_start_matches("www.").to_string())
+        let h = u.host_str()?.trim_start_matches("www.");
+        Some(match u.port() {
+            Some(p) => format!("{h}:{p}"),
+            None => h.to_string(),
+        })
     });
     let rest = parsed.as_ref().map(|u| {
         let mut r = u.path().to_string();
@@ -402,12 +405,32 @@ enum Piece<'a> {
     Changed(Vec<&'a str>, Vec<&'a str>),
 }
 
+/// Cut a diff into pieces, unchanged lines more than `radius` lines from a
+/// change folded away.
 fn pieces(ops: &[Op], radius: usize) -> Vec<Piece<'_>> {
-    let near = |i: usize| {
-        ops[i.saturating_sub(radius)..(i + radius + 1).min(ops.len())]
-            .iter()
-            .any(|o| o.tag != OpTag::Equal)
-    };
+    // How far each line is from the nearest change, in two passes: asking
+    // each line to look around it would take time in the square of the
+    // page's length to show it whole.
+    let mut dist = vec![usize::MAX; ops.len()];
+    let mut last = None;
+    for (i, o) in ops.iter().enumerate() {
+        if o.tag != OpTag::Equal {
+            last = Some(i);
+        }
+        if let Some(l) = last {
+            dist[i] = i - l;
+        }
+    }
+    let mut next = None;
+    for (i, o) in ops.iter().enumerate().rev() {
+        if o.tag != OpTag::Equal {
+            next = Some(i);
+        }
+        if let Some(n) = next {
+            dist[i] = dist[i].min(n - i);
+        }
+    }
+    let near = |i: usize| dist[i] <= radius;
     let mut out = Vec::new();
     let mut hidden = Vec::new();
     let mut i = 0;
@@ -450,6 +473,10 @@ fn text_of(line: &str) -> &str {
     line.split_once(": ").map_or(line, |(_, t)| t)
 }
 
+/// Longest pair of lines whose changed words are marked: comparing words
+/// may take up to a second a pair, and a page can be one long line.
+const MAX_WORDS_BYTES: usize = 8_000;
+
 /// Lines removed and added, a removed line next to what it became, with
 /// the words that changed marked.
 fn changed(del: &[&str], ins: &[&str]) -> Markup {
@@ -457,14 +484,15 @@ fn changed(del: &[&str], ins: &[&str]) -> Markup {
         div.chg {
             @for k in 0..del.len().max(ins.len()) {
                 @match (del.get(k), ins.get(k)) {
-                    (Some(a), Some(b)) => {
+                    (Some(a), Some(b)) if a.len() + b.len() <= MAX_WORDS_BYTES => {
                         @let (wa, wb) = diff::words(text_of(a), text_of(b));
                         div.del { (block(a, Some((&wa, "del")))) }
                         div.ins { (block(b, Some((&wb, "ins")))) }
                     }
-                    (Some(a), None) => { div.del { (block(a, None)) } }
-                    (None, Some(b)) => { div.ins { (block(b, None)) } }
-                    (None, None) => {}
+                    (a, b) => {
+                        @if let Some(a) = a { div.del { (block(a, None)) } }
+                        @if let Some(b) = b { div.ins { (block(b, None)) } }
+                    }
                 }
             }
         }
@@ -511,7 +539,7 @@ const TOO_LONG: &str =
 /// A change as the page reads: what changed, a little around it, and the
 /// rest folded away (all of it with `whole`).
 pub(super) fn reading(c: &Change, whole: bool) -> Markup {
-    let (ps, cut) = shown(pieces(&c.ops, if whole { usize::MAX / 2 } else { 2 }));
+    let (ps, cut) = shown(pieces(&c.ops, if whole { usize::MAX } else { 2 }));
     html! {
         div.doc {
             @for p in &ps {
@@ -542,14 +570,14 @@ fn lines(n: usize) -> &'static str {
 /// The first few changed lines of a change, for a list.
 pub(super) fn preview(c: &Change, max: usize) -> Markup {
     let ps = pieces(&c.ops, 0);
-    let mut changes = ps.iter().filter_map(|p| match p {
+    let changes = ps.iter().filter_map(|p| match p {
         Piece::Changed(d, i) => Some((d, i)),
         _ => None,
     });
     let mut left = max;
     let mut more = 0;
     let mut parts = Vec::new();
-    for (d, i) in changes.by_ref() {
+    for (d, i) in changes {
         if left == 0 {
             more += d.len().max(i.len());
             continue;
@@ -638,6 +666,31 @@ mod tests {
             assert!(html.contains(TOO_LONG));
             assert!(html.len() < 2_000_000, "{} bytes", html.len());
         }
+    }
+
+    #[test]
+    fn a_long_page_shows_whole_quickly() {
+        // The change at the end: every line used to look back to it.
+        let a: String = (0..200_000).map(|i| format!("p: {i}\n")).collect();
+        let b = format!("{a}p: new\n");
+        let c = diff::diff(&a, &b).unwrap();
+        let t = std::time::Instant::now();
+        let html = reading(&c, true).into_string();
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
+        assert!(html.contains(TOO_LONG));
+        // Around a change, two lines each way; the rest folded.
+        let ps = pieces(&c.ops, 2);
+        assert!(
+            matches!(ps.as_slice(), [Piece::Hidden(h), Piece::Same(_), Piece::Same(_), Piece::Changed(d, i)]
+            if h.len() == 199_998 && d.is_empty() && i.len() == 1)
+        );
+    }
+
+    #[test]
+    fn addresses_keep_their_port() {
+        let html = address("https://www.a.example:8443/terms?x=1").into_string();
+        assert!(html.contains("<b>a.example:8443</b>"), "{html}");
+        assert!(html.contains("/terms?x=1"));
     }
 
     #[test]

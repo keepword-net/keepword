@@ -2,6 +2,7 @@
 //! watch, and the witnesses it knows.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use axum::extract::State;
@@ -16,6 +17,14 @@ use super::{Ui, WebResult, bad_request};
 
 /// The form that asks the network to watch a page.
 pub(super) fn request_form(ui: &Ui, url: Option<&str>, every: u64) -> Markup {
+    if !super::joined(&ui.node) {
+        return html! {
+            p.muted {
+                "This node works alone, so nobody else would hear the request. "
+                a href="/settings#network" { "Join the network" } " first."
+            }
+        };
+    }
     html! {
         form.stack method="post" action="/network/request" {
             (view::csrf(ui))
@@ -55,12 +64,13 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
     let scores = node.store.reputation_scores(now)?;
     let bad = node.store.equivocating_logs()?;
     let mine = node.store.requests_by(&node.key.public(), now)?;
-    let others: Vec<_> = node
+    let others = node
         .store
         .requests_active(now)?
-        .into_iter()
+        .iter()
         .filter(|r| r.body.requester != node.key.public())
-        .collect();
+        .count();
+    let joined = super::joined(node);
     let for_network = node
         .store
         .watches()?
@@ -86,7 +96,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         div.card {
             div.card-head {
                 h2 { "This node" }
-                (view::button(&ui, "/network/sync", &[], "Sync now", "small", None))
+                @if joined { (view::button(&ui, "/network/sync", &[], "Sync now", "small", None)) }
             }
             dl.facts {
                 dt { "Reachable" }
@@ -97,7 +107,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                             "at home, through a relay"
                             @if let Some(r) = &relayed_by { ": " span.mono { (r) } } @else { " (looking for one)" }
                         }
-                        (None, None) if peers.is_empty() && net.peers.is_empty() => {
+                        (None, None) if !joined => {
                             "no: it works alone. " a href="/settings#network" { "Join the network" }
                         }
                         (None, None) => {
@@ -156,7 +166,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             p {
                 "This node checks " a href="/pages?show=network" { (for_network) " " (if for_network == 1 { "page" } else { "pages" }) }
                 " that other witnesses asked the network to watch. "
-                span.muted { (others.len()) " requests are active across the network." }
+                span.muted { (others) " requests are active across the network." }
             }
         }
         section {
@@ -227,6 +237,13 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
 }
 
 pub(super) async fn request(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
+    if !super::joined(&ui.node) {
+        return Ok(flash(
+            "/network",
+            "error",
+            "This node works alone: join the network first.",
+        ));
+    }
     let url = target::canonical_url(form.get("u"))
         .map_err(|_| bad_request("That isn't a web address."))?
         .to_string();
@@ -313,10 +330,37 @@ pub(super) async fn forget_peer(State(ui): State<Ui>, form: Post) -> WebResult<R
     })
 }
 
+/// A federation round started from the UI is running: pressing the button
+/// again doesn't start another.
+static SYNCING: AtomicBool = AtomicBool::new(false);
+
 /// Run a federation round now. A slow one goes on in the background.
 pub(super) async fn sync(State(ui): State<Ui>, _: Post) -> WebResult<Response> {
+    if !super::joined(&ui.node) {
+        return Ok(flash(
+            "/network",
+            "error",
+            "This node works alone: join the network first.",
+        ));
+    }
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            SYNCING.store(false, Ordering::Release);
+        }
+    }
+    if SYNCING.swap(true, Ordering::AcqRel) {
+        return Ok(flash(
+            "/network",
+            "ok",
+            "A sync is already running. Reload this page in a minute.",
+        ));
+    }
     let node = Arc::clone(&ui.node);
-    let round = tokio::spawn(async move { node.sync().await });
+    let round = tokio::spawn(async move {
+        let _done = Done;
+        node.sync().await
+    });
     Ok(
         match tokio::time::timeout(Duration::from_secs(20), round).await {
             Ok(Ok(Ok(r))) => {
