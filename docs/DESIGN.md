@@ -529,10 +529,12 @@ A requester can withdraw a request with a signed **cancellation**
 cancellation until the request would have expired, so a peer re-sending it
 can't revive it. Asking again for a URL you already requested replaces
 your earlier request, which is how the interval changes. A node also asks
-again by itself, for as long as before, for the pages it still watches,
-once a quarter of a request's time is left: a page stays watched by the
-network as long as by its requester. Captures already made stay in the
-witnesses' logs.
+again by itself about the pages it watches and asked about: for as long
+as before, once a quarter of a request's time is left, and anew for one
+that ran out while it was down. A page stays watched by the network as
+long as by its requester, and at most a week (the lease) after the
+requester stops; withdrawing ends it at once. Captures already made stay
+in the witnesses' logs.
 
 Operators keep control of what their node fetches for others:
 `network.decline_hosts` lists hosts it never captures for requests (they

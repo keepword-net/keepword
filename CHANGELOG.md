@@ -21,11 +21,14 @@ only change incompatibly in a new major version.
   forgets witnesses and syncs. Settings has the common ones as a form,
   all of `keepword.toml` for the rest, the password, and a restart.
   The CLI does all of this as before.
-- **A node renews its network requests for the pages it still watches**,
-  with a quarter of their time left, for as long again: a page asked to
-  the network when it was added stays watched by other witnesses as long
-  as by this node, so asking for one takes no duration any more. A
-  request for a page not watched here still runs out.
+- **A node keeps asking the network about the pages it watches**, once
+  asked: it renews a request with a quarter of its time left, for as long
+  again, and asks anew for one that ran out while it was down. A page
+  asked about stays watched by other witnesses as long as by this node,
+  so asking about one takes no duration any more; that is a week's lease,
+  the most the network goes on once the node stops. Withdrawing stops it
+  (`keepword request --cancel` too), and a request for a page not watched
+  here still runs out.
 
 ### Changed
 
@@ -51,9 +54,9 @@ only change incompatibly in a new major version.
   container runtime to start it again. The UI only offers to where one
   of them runs it, or `KEEPWORD_SUPERVISED=1` says another does; else it
   says to restart Keepword by hand.
-- **The store's schema is version 6**: changes record when they were
-  reviewed. Once this version has opened a node's data, 2.4.0 refuses
-  it.
+- **The store's schema is version 7**: changes record when they were
+  reviewed, and watches whether the network was asked about them. Once
+  this version has opened a node's data, earlier versions refuse it.
 
 ### Fixed
 

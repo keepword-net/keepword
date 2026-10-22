@@ -34,7 +34,7 @@ pub enum StoreError {
 
 pub type Result<T> = std::result::Result<T, StoreError>;
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 const SCHEMA: &str = r#"
 CREATE TABLE attestations (
@@ -90,6 +90,12 @@ const SCHEMA_V6: &str = r#"
 ALTER TABLE changes ADD COLUMN reviewed_at INTEGER;
 "#;
 
+/// Whether this node asked the network to watch each page it watches: it
+/// keeps asking while it does.
+const SCHEMA_V7: &str = r#"
+ALTER TABLE watch ADD COLUMN network INTEGER NOT NULL DEFAULT 0;
+"#;
+
 /// A stored attestation with its position in the log.
 #[derive(Clone, Debug, Serialize)]
 pub struct Record {
@@ -110,6 +116,9 @@ pub struct Watch {
     /// watch request; such watches expire with the request.
     pub request_id: Option<Digest>,
     pub expires_at: Option<i64>,
+    /// This node asked the network to watch it too, and keeps asking while
+    /// it watches it (`keepword::Node::renew_requests`).
+    pub network: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -169,7 +178,7 @@ impl Store {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         match v {
-            0..=5 => {
+            0..=6 => {
                 let tx = conn.unchecked_transaction()?;
                 if v == 0 {
                     tx.execute_batch(SCHEMA)?;
@@ -186,7 +195,10 @@ impl Store {
                 if v <= 4 {
                     tx.execute_batch(net::SCHEMA_V5)?;
                 }
-                tx.execute_batch(SCHEMA_V6)?;
+                if v <= 5 {
+                    tx.execute_batch(SCHEMA_V6)?;
+                }
+                tx.execute_batch(SCHEMA_V7)?;
                 tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 tx.commit()?;
             }
@@ -668,7 +680,8 @@ impl Store {
     pub fn watches(&self) -> Result<Vec<Watch>> {
         let db = self.db();
         let mut st = db.prepare(
-            "SELECT url, every_secs, render, added_at, last_run, last_error, request_id, expires_at
+            "SELECT url, every_secs, render, added_at, last_run, last_error, request_id, expires_at,
+                    network
              FROM watch ORDER BY url",
         )?;
         let rows = st.query_map([], |r| {
@@ -683,9 +696,19 @@ impl Store {
                     .get::<_, Option<Vec<u8>>>(6)?
                     .and_then(|b| Digest::from_slice(&b)),
                 expires_at: r.get(7)?,
+                network: r.get(8)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Note whether this node asked the network to watch a page it watches.
+    /// Returns whether it watches it.
+    pub fn watch_set_network(&self, url: &str, on: bool) -> Result<bool> {
+        Ok(self.db().execute(
+            "UPDATE watch SET network = ?2 WHERE url = ?1 AND request_id IS NULL",
+            params![url, on],
+        )? > 0)
     }
 
     pub fn watch_mark(&self, url: &str, at_ms: i64, error: Option<&str>) -> Result<()> {
@@ -967,6 +990,43 @@ mod tests {
         assert_eq!(s.mark_reviewed(None, None, Some(second), 13).unwrap(), 0);
         assert_eq!(s.mark_reviewed(None, None, Some(other), 13).unwrap(), 1);
         assert_eq!(s.changes_to_review_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn watches_remember_asking_the_network() {
+        let t = tempfile::tempdir().unwrap();
+        let s = Store::open(t.path()).unwrap();
+        let a = "https://a.example/";
+        s.watch_add(a, 3600, false, 1).unwrap();
+        assert!(!s.watches().unwrap()[0].network);
+        assert!(s.watch_set_network(a, true).unwrap());
+        // Changing how often keeps it.
+        s.watch_add(a, 600, false, 2).unwrap();
+        assert!(s.watches().unwrap()[0].network);
+        assert!(!s.watch_set_network("https://b.example/", true).unwrap());
+        // As do 2.5.0-beta.1's databases, version 6.
+        let t = tempfile::tempdir().unwrap();
+        {
+            let c = Connection::open(t.path().join("index.sqlite")).unwrap();
+            c.execute_batch(SCHEMA).unwrap();
+            for s in [
+                net::SCHEMA_V2,
+                net::SCHEMA_V3,
+                net::SCHEMA_V4,
+                net::SCHEMA_V5,
+                SCHEMA_V6,
+            ] {
+                c.execute_batch(s).unwrap();
+            }
+            c.pragma_update(None, "user_version", 6).unwrap();
+            c.execute(
+                "INSERT INTO watch (url, every_secs, render, added_at) VALUES ('https://a.example/', 60, 0, 1)",
+                [],
+            )
+            .unwrap();
+        }
+        let s = Store::open(t.path()).unwrap();
+        assert!(!s.watches().unwrap()[0].network);
     }
 
     #[test]

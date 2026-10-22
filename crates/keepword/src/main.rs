@@ -1026,7 +1026,7 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
             url, cancel: true, ..
         } => {
             let node = Node::open(&dir)?;
-            match node.cancel_requests(&url)? {
+            match node.withdraw_requests(&url)? {
                 0 => bail!("you have no active request for {url}"),
                 n => println!(
                     "withdrew {n} request{}; assigned witnesses stop after the next sync",

@@ -38,6 +38,10 @@ use crate::vantage::{self, Location};
 pub const MAX_REQUEST_MS: i64 = 30 * 86_400_000;
 /// Shortest interval a watch request may ask for.
 pub const MIN_REQUEST_EVERY_SECS: u64 = 600;
+/// How long a request for a page this node watches runs. It is renewed
+/// while the page is watched (`Node::renew_requests`), so this is how long
+/// the network goes on watching it once the node stops: shut down, or gone.
+pub const LEASE_MS: i64 = 7 * 86_400_000;
 /// Gossiped heads of a log checked against this node's audit per audit.
 const HEAD_CHECKS_PER_AUDIT: u32 = 8;
 /// How long a log may fail to serve a consistency proof before that counts
@@ -843,7 +847,18 @@ impl Node {
         check_request(every_secs, duration_ms)?;
         let replaced = self.cancel_requests(url)?;
         let r = self.request_watch(url, every_secs, duration_ms, render)?;
+        // A page watched here: keep asking while it is.
+        self.store.watch_set_network(&r.body.url, true)?;
         Ok((r, replaced))
+    }
+
+    /// Withdraw this node's requests for a URL, and stop asking about it
+    /// while it is watched here. Returns how many there were.
+    pub fn withdraw_requests(&self, url: &str) -> Result<usize> {
+        let n = self.cancel_requests(url)?;
+        let url = target::canonical_url(url)?;
+        self.store.watch_set_network(url.as_str(), false)?;
+        Ok(n)
     }
 
     /// Withdraw this node's active requests for a URL. Returns how many.
@@ -870,39 +885,66 @@ impl Node {
         Ok(n)
     }
 
-    /// Ask again, for as long as before, for the pages this node still
-    /// watches itself, before its requests for them run out: a page asked
-    /// to the network when it was added stays watched by other witnesses as
-    /// long as here. A request is renewed with a quarter of its time left:
-    /// a renewed one has all of it, so isn't renewed again for a while.
-    /// Returns how many were renewed.
+    /// Keep asking the network about the pages this node watches and asked
+    /// it about (`Watch::network`), for as long as it watches them: renew a
+    /// request with a quarter of its time left, for as long again, and ask
+    /// anew once one ran out while the node was down. A renewed request has
+    /// all its time again, so isn't renewed for a while. A request of this
+    /// node's for a page it watches counts as asked: it was made before the
+    /// flag was kept. Returns how many requests it made.
     pub fn renew_requests(&self, now: i64) -> Result<usize> {
-        let watched: HashSet<String> = self
-            .store
-            .watches()?
-            .into_iter()
-            .filter(|w| w.request_id.is_none())
-            .map(|w| w.url)
-            .collect();
-        let mut renewed = HashSet::new();
-        let mut failed = None;
+        let mut mine: HashMap<String, Signed<WatchRequest>> = HashMap::new();
         for r in self.store.requests_by(&self.key.public(), now)? {
-            let b = &r.body;
-            let span = (b.expires_at_ms - b.issued_at_ms).min(MAX_REQUEST_MS);
-            if !watched.contains(&b.url)
-                || span <= 0
-                || b.expires_at_ms - now > span / 4
-                || !renewed.insert(b.url.clone())
-            {
+            let later = mine
+                .get(&r.body.url)
+                .is_none_or(|m| r.body.expires_at_ms > m.body.expires_at_ms);
+            if later {
+                mine.insert(r.body.url.clone(), r);
+            }
+        }
+        // Renewing frees a request as it takes one; asking anew past the cap
+        // would fail every round, so it waits for room.
+        let mut room = self
+            .config
+            .network
+            .max_requests_per_requester
+            .saturating_sub(mine.len() as u64);
+        let (mut asked, mut failed) = (0, None);
+        for w in self.store.watches()? {
+            if w.request_id.is_some() {
                 continue;
             }
-            if let Err(e) = self.replace_request(&b.url, b.every_secs, span, b.render) {
-                failed = Some(e.context(format!("renewing the request for {}", b.url)));
+            let ask = match mine.get(&w.url) {
+                Some(r) => {
+                    if !w.network {
+                        self.store.watch_set_network(&w.url, true)?;
+                    }
+                    let b = &r.body;
+                    let span = (b.expires_at_ms - b.issued_at_ms).min(MAX_REQUEST_MS);
+                    (span > 0 && b.expires_at_ms - now <= span / 4).then_some((
+                        b.every_secs,
+                        span,
+                        b.render,
+                    ))
+                }
+                None if w.network && room > 0 => {
+                    room -= 1;
+                    let every = w.every_secs.max(MIN_REQUEST_EVERY_SECS);
+                    Some((every, LEASE_MS, w.render))
+                }
+                None => None,
+            };
+            let Some((every, span, render)) = ask else {
+                continue;
+            };
+            match self.replace_request(&w.url, every, span, render) {
+                Ok(_) => asked += 1,
+                Err(e) => failed = Some(e.context(format!("asking again for {}", w.url))),
             }
         }
         match failed {
             Some(e) => Err(e),
-            None => Ok(renewed.len()),
+            None => Ok(asked),
         }
     }
 
@@ -1711,26 +1753,81 @@ mod tests {
         Node::init(t.path(), &crate::config::Config::default()).unwrap();
         let node = Node::open(t.path()).unwrap();
         let now = now_ms();
-        let week = 7 * 86_400_000;
-        let (watched, dropped) = ("https://a.example/terms", "https://b.example/terms");
+        let day = 86_400_000;
+        let (watched, dropped, other) = (
+            "https://a.example/terms",
+            "https://b.example/terms",
+            "https://c.example/terms",
+        );
+        let flagged = |u: &str| {
+            node.store
+                .watches()
+                .unwrap()
+                .iter()
+                .any(|w| w.url == u && w.network)
+        };
+        let mine = |u: &str| {
+            node.store
+                .requests_by(&node.key.public(), now_ms())
+                .unwrap()
+                .into_iter()
+                .filter(|r| r.body.url == u)
+                .collect::<Vec<_>>()
+        };
         for u in [watched, dropped] {
             node.store.watch_add(u, 3600, false, now).unwrap();
-            node.replace_request(u, 3600, week, false).unwrap();
+            node.replace_request(u, 3600, LEASE_MS, false).unwrap();
         }
+        assert!(flagged(watched), "asking about a watched page marks it");
         node.store.watch_remove(dropped).unwrap();
-        // A fresh request isn't due.
-        assert_eq!(node.renew_requests(now).unwrap(), 0);
+        // Not watched here: asked for as long as it was.
+        node.replace_request(other, 3600, LEASE_MS, false).unwrap();
+        assert_eq!(
+            node.renew_requests(now).unwrap(),
+            0,
+            "fresh ones aren't due"
+        );
         // Six days on, with a day left: only the page still watched here.
-        let later = now + 6 * 86_400_000;
-        assert_eq!(node.renew_requests(later).unwrap(), 1);
-        let mine = node.store.requests_by(&node.key.public(), now).unwrap();
-        let by_url = |u: &str| mine.iter().filter(|r| r.body.url == u).collect::<Vec<_>>();
-        let renewed = by_url(watched);
-        assert_eq!(renewed.len(), 1, "the old one is withdrawn");
-        assert!(renewed[0].body.expires_at_ms - now_ms() > week - 60_000);
-        assert_eq!(by_url(dropped).len(), 1);
-        // Renewed, it has all its time again.
-        assert_eq!(node.renew_requests(now_ms()).unwrap(), 0);
+        assert_eq!(node.renew_requests(now + 6 * day).unwrap(), 1);
+        assert_eq!(mine(watched).len(), 1, "the old one is withdrawn");
+        assert!(mine(watched)[0].body.expires_at_ms - now_ms() > LEASE_MS - 60_000);
+        assert_eq!((mine(dropped).len(), mine(other).len()), (1, 1));
+        assert_eq!(
+            node.renew_requests(now_ms()).unwrap(),
+            0,
+            "renewed, it is fresh"
+        );
+        // Down past the end of every request: the watched page is asked anew.
+        assert_eq!(node.renew_requests(now + 8 * day).unwrap(), 1);
+        assert_eq!(mine(watched).len(), 1);
+        // Withdrawn, it isn't, however long.
+        assert_eq!(node.withdraw_requests(watched).unwrap(), 1);
+        assert!(!flagged(watched));
+        assert_eq!(node.renew_requests(now + 30 * day).unwrap(), 0);
+        // A request from before the flag was kept counts as asked.
+        let older = "https://d.example/terms";
+        node.store.watch_add(older, 3600, false, now).unwrap();
+        node.replace_request(older, 3600, LEASE_MS, false).unwrap();
+        node.store.watch_set_network(older, false).unwrap();
+        node.renew_requests(now_ms()).unwrap();
+        assert!(flagged(older));
+    }
+
+    #[test]
+    fn requests_asked_anew_wait_for_room() {
+        let t = tempfile::tempdir().unwrap();
+        let mut cfg = crate::config::Config::default();
+        cfg.network.max_requests_per_requester = 1;
+        Node::init(t.path(), &cfg).unwrap();
+        let node = Node::open(t.path()).unwrap();
+        let now = now_ms();
+        for u in ["https://a.example/", "https://b.example/"] {
+            node.store.watch_add(u, 3600, false, now).unwrap();
+            node.store.watch_set_network(u, true).unwrap();
+        }
+        // Both ran out; room for one: the other waits, without failing.
+        assert_eq!(node.renew_requests(now).unwrap(), 1);
+        assert_eq!(node.renew_requests(now).unwrap(), 0);
     }
 
     #[test]
