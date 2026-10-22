@@ -32,6 +32,7 @@ use serde::Serialize;
 use url::Url;
 
 use crate::config::{Config, Retain};
+use crate::federation::PeerState;
 
 pub struct Node {
     pub dir: PathBuf,
@@ -721,7 +722,9 @@ pub fn status_warnings(node: &Node, located: bool) -> Result<Vec<String>> {
     let mut w = Vec::new();
     let peers = node.store.peers()?;
     let reachable = cfg.network.endpoint.is_some() || cfg.network.relay.is_some();
-    if !reachable && cfg.network.peers.is_empty() && peers.is_empty() {
+    // When `keepword serve` federates, whatever peers this node remembers.
+    let federating = reachable || !cfg.network.peers.is_empty();
+    if !federating {
         w.push(
             "federation is off: set network.endpoint (the node then joins through the default \
              seeds) and restart the service"
@@ -766,14 +769,23 @@ pub fn status_warnings(node: &Node, located: bool) -> Result<Vec<String>> {
             "network.client_ip_header does nothing without network.trust_forwarded_for".to_string(),
         );
     }
-    let failing = peers
-        .iter()
-        .filter(|p| p.endpoint.is_some() && p.last_error.is_some())
-        .count();
+    let states: Vec<PeerState> = peers.iter().map(|p| PeerState::of(p, now)).collect();
+    let failing = states.iter().filter(|s| **s == PeerState::Failing).count();
     if failing > 0 {
         w.push(format!(
             "{failing} peer(s) failing to sync; see `keepword net peers`"
         ));
+    }
+    // Peers keep the state of their last sync: if none synced lately, this
+    // node stopped syncing, and they all just look as they did then.
+    if federating
+        && peers.iter().any(|p| p.endpoint.is_some())
+        && !states.contains(&PeerState::InSync)
+    {
+        w.push(
+            "no peer synced in the last hour: is `keepword serve` running? See `keepword net peers`"
+                .to_string(),
+        );
     }
     let q = &cfg.quorum;
     for (on, what) in [

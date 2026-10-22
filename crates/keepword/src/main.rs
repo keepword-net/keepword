@@ -6,6 +6,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use keepword::config::{Config, ContentConfig, Retain, VantageConfig};
+use keepword::federation::PeerState;
 use keepword::web::UiAuth;
 use keepword::{Node, Outcome, method_name, parse_time};
 use keepword_core::bundle::{Bundle, Report, Status};
@@ -879,11 +880,25 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     if cli.json {
                         return print_json(&peers).map(|_| true);
                     }
-                    let scores = node.store.reputation_scores(now_ms())?;
+                    let now = now_ms();
+                    let scores = node.store.reputation_scores(now)?;
                     for p in peers {
-                        let loc = node.location_of(&p.key, now_ms())?;
+                        let loc = node.location_of(&p.key, now)?;
+                        // When it last answered a sync: a peer is only known
+                        // to work as of then.
+                        let worked = p.last_ok.map_or("never".to_string(), minute);
+                        let state = match PeerState::of(&p, now) {
+                            PeerState::Failing => format!(
+                                "failing, last worked {worked}: {}",
+                                p.last_error.as_deref().unwrap_or_default()
+                            ),
+                            s @ (PeerState::InSync | PeerState::Quiet) => {
+                                format!("{}, last worked {worked}", s.label())
+                            }
+                            s => s.label().to_string(),
+                        };
                         println!(
-                            "{}  {}  log {}  location {}  reputation {:.1}  last sync {}{}",
+                            "{}  {}  log {}  location {}  reputation {:.1}  {state}",
                             p.key.short(),
                             p.endpoint.as_deref().unwrap_or("(no endpoint)"),
                             // Only known for logs this node audits.
@@ -893,10 +908,6 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                             loc.map(|l| l.to_string())
                                 .unwrap_or_else(|| "unknown".into()),
                             scores.get(&p.key).copied().unwrap_or(0.0),
-                            p.last_sync.map(format_ms).unwrap_or_else(|| "never".into()),
-                            p.last_error
-                                .map(|e| format!("  error: {e}"))
-                                .unwrap_or_default()
                         );
                     }
                 }
@@ -951,7 +962,12 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                             .map(|l| l.to_string())
                             .unwrap_or_else(|| "not corroborated".into())
                     );
-                    println!("peers       {}", node.store.peers()?.len());
+                    let peers = node.store.peers()?;
+                    let in_sync = peers
+                        .iter()
+                        .filter(|p| PeerState::of(p, now) == PeerState::InSync)
+                        .count();
+                    println!("peers       {}, {in_sync} in sync", peers.len());
                     println!(
                         "candidates  {} witnesses eligible for assignment",
                         node.candidates(now)?.len()

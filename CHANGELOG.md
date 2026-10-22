@@ -57,6 +57,16 @@ only change incompatibly in a new major version.
 - **Adding a canonical link raised a silent-edit alert.** The
   `canonical:` line is gone from the normalized text: it is SEO markup a
   site changes on all its pages at once, not content.
+- **A peer looked fine as long as its last sync had worked, however long
+  ago.** A round syncs a sample of the peers, so one that went down
+  wasn't noticed until it was picked again, and if the node stopped
+  syncing, every peer kept looking as it did then. A peer is now in sync
+  only when a sync worked within the hour, and quiet after that;
+  `keepword net peers` says when it last worked rather than when it was
+  last tried, and `net status` counts the peers in sync and warns when
+  none is. `net status` also says federation is off when no endpoint,
+  relay or peers are set, as `keepword serve` then doesn't sync, even
+  with peers it remembers.
 
 ## [2.4.0] - 2026-10-20
 

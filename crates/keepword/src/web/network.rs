@@ -8,12 +8,34 @@ use std::time::Duration;
 use axum::extract::State;
 use axum::response::Response;
 use keepword_core::{now_ms, target};
+use keepword_store::net::Peer;
 use maud::{Markup, html};
 
 use super::auth::{Post, flash};
 use super::pages::REQUEST_DAYS;
 use super::view::{self, Ctx, Nav};
 use super::{Ui, WebResult, bad_request};
+use crate::federation::PeerState;
+
+/// How a witness has answered this node's syncs.
+fn state_badge(p: &Peer, now: i64) -> Markup {
+    let s = PeerState::of(p, now);
+    let (class, why) = match s {
+        PeerState::InSync => ("badge ok", "Its last sync worked, within the hour."),
+        PeerState::Quiet => (
+            "badge",
+            "Its last sync worked, more than an hour ago. Each round syncs a few witnesses: \
+             this node hasn't synced with it since, and doesn't know how it is doing.",
+        ),
+        PeerState::Failing => ("badge status", p.last_error.as_deref().unwrap_or_default()),
+        PeerState::Never => ("badge", "This node hasn't synced with it yet."),
+        PeerState::PushOnly => (
+            "badge",
+            "It has no address to sync with; it sends to this node.",
+        ),
+    };
+    html! { span class=(class) title=(why) { (s.label()) } }
+}
 
 /// The form that asks the network to watch a page.
 pub(super) fn request_form(ui: &Ui, url: Option<&str>, every: u64) -> Markup {
@@ -85,7 +107,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         .collect();
     let ok = peers
         .iter()
-        .filter(|p| p.last_error.is_none() && p.last_sync.is_some())
+        .filter(|p| PeerState::of(p, now) == PeerState::InSync)
         .count();
     let last_sync = peers.iter().filter_map(|p| p.last_ok).max();
     let anchors = node.store.anchors()?;
@@ -176,7 +198,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             } @else {
                 div.table-wrap {
                     table {
-                        thead { tr { th { "Witness" } th { "Where" } th { "Reputation" } th { "Last sync" } th { "State" } th {} } }
+                        thead { tr { th { "Witness" } th { "Where" } th { "Reputation" } th { "Last worked" } th { "State" } th {} } }
                         tbody {
                             @for p in &peers {
                                 @let host = p.endpoint.as_deref().and_then(|e| url::Url::parse(e).ok()?.host_str().map(str::to_string));
@@ -187,14 +209,12 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                                     }
                                     td { @match node.location_of(&p.key, now)? { Some(l) => { (l.to_string()) } None => { span.muted { "unknown" } } } }
                                     td { (format!("{:.1}", scores.get(&p.key).copied().unwrap_or(0.0))) }
-                                    td { @match p.last_sync { Some(t) => { (view::when(t)) } None => { "never" } } }
+                                    td { @match p.last_ok { Some(t) => { (view::when(t)) } None => { "never" } } }
                                     td {
                                         @if bad.contains(&p.key) {
                                             span.badge.silent title="Its log showed two different histories." { "equivocated" }
-                                        } @else if let Some(e) = &p.last_error {
-                                            span.badge.status title=(e) { "failing" }
                                         } @else {
-                                            span.badge.ok { "ok" }
+                                            (state_badge(p, now))
                                         }
                                     }
                                     td {
