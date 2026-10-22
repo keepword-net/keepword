@@ -325,6 +325,12 @@ fn main() {
 /// Whether a service manager starts this process again when it exits:
 /// systemd, a container runtime.
 fn supervised() -> bool {
+    // For service managers that leave no trace to go by: runit, s6, …
+    match std::env::var("KEEPWORD_SUPERVISED").as_deref() {
+        Ok("1") => return true,
+        Ok("0") => return false,
+        _ => {}
+    }
     std::env::var_os("INVOCATION_ID").is_some()
         || std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
         || Path::new("/.dockerenv").exists()

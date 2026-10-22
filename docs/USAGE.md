@@ -140,7 +140,8 @@ own words; adding pages (several at once) and how often they're checked;
 each page's history, what other witnesses saw, its evidence bundles, and
 deleting its content; asking the network to watch a page; the witnesses
 this node knows; and the settings, with a restart to apply them where a
-service manager starts the node again (systemd, a container).
+service manager starts the node again (systemd, a container; for one
+Keepword can't tell, like runit or s6, set `KEEPWORD_SUPERVISED=1`).
 
 Who may use it:
 

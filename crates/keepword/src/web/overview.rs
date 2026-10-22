@@ -128,7 +128,8 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             div.notice.error {
                 b { "Checks have stalled." }
                 " Keepword hasn't got anywhere with them since " (view::when(t))
-                ". Restarting it usually helps; its log says what held it up."
+                ". Restarting it usually helps; its log says what held it up. "
+                (super::settings::restart_control(&ui, false))
             }
         }
         @if own.is_empty() {

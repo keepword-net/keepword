@@ -39,7 +39,8 @@ only change incompatibly in a new major version.
 - **`keepword serve` exits with status 75 when the web UI restarts it**
   to apply new settings, for systemd (`Restart=on-failure`) or the
   container runtime to start it again. The UI only offers to where one
-  of them runs it.
+  of them runs it, or `KEEPWORD_SUPERVISED=1` says another does; else it
+  says to restart Keepword by hand.
 - **The store's schema is version 6**: changes record when they were
   reviewed. Once this version has opened a node's data, 2.4.0 refuses
   it.

@@ -71,14 +71,8 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             div.head { h1 { "Settings" } }
             @if pending {
                 div.notice.warn #restart {
-                    b { "Saved settings take effect after a restart." }
-                    @if ui.opts.supervised {
-                        " "
-                        (view::button(&ui, "/settings/restart", &[], "Restart now", "primary small",
-                            Some("Restart Keepword now? It is back in a few seconds.")))
-                    } @else {
-                        " Restart Keepword to apply them."
-                    }
+                    p { b { "Saved settings take effect after a restart." } }
+                    (restart_control(&ui, true))
                 }
             }
             form.stack.settings method="post" action="/settings" {
@@ -179,11 +173,30 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                     dt { "Data folder" } dd.mono.break { (node.dir.display()) }
                     dt { "Witness key" } dd.mono.break { (node.key.public()) }
                     dt { "Automatic checks" } dd { @if ui.opts.watching { "on" } @else { "off (start with --watch)" } }
+                    dt { "Restart" } dd { (restart_control(&ui, false)) }
                 }
             }
         }
     };
     Ok(view::page(&ui, &ctx, Nav::Settings, "Settings", body))
+}
+
+/// Restarting Keepword, to apply saved settings or unstick it: a button
+/// where a service manager starts it again, else what to do instead.
+pub(super) fn restart_control(ui: &Ui, primary: bool) -> Markup {
+    html! {
+        @if ui.opts.supervised {
+            (view::button(ui, "/settings/restart", &[], "Restart Keepword",
+                if primary { "primary small" } else { "small" },
+                Some("Restart Keepword now? It is back in a few seconds.")))
+        } @else {
+            span.muted.small {
+                "No service manager (systemd, Docker) runs Keepword here to start it again, so it \
+                 can't restart itself: stop it and start it again. If one does run it, set "
+                code { "KEEPWORD_SUPERVISED=1" } "."
+            }
+        }
+    }
 }
 
 fn password_section(ui: &Ui) -> Markup {
