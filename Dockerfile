@@ -39,7 +39,7 @@ COPY packaging/docker/entrypoint.sh /usr/local/bin/keepword-entrypoint
 USER keepword
 ENV KEEPWORD_DIR=/data HOME=/data
 VOLUME /data
-# 8480: web UI (keep private), 8481: peer API (publish behind TLS)
+# 8480: web UI (asks for a password), 8481: peer API (publish behind TLS)
 EXPOSE 8480 8481
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
     CMD curl -fsS http://127.0.0.1:8481/v1/descriptor >/dev/null || exit 1

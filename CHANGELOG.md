@@ -7,6 +7,38 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+### Added
+
+- **A web UI that runs a node without the CLI**, for people who won't
+  open a terminal, as on Umbrel or TrueNAS. The overview lists the
+  changes to review, each with the words that changed marked, says how
+  the node is doing, and what to do first on a new node. Pages can be
+  added several at once, also asking the network to watch them, and each
+  has its checks, changes, what other witnesses saw, its evidence, and a
+  way to delete its content. A change reads like the page, with the
+  whole page and the normalized lines a tab away, and is marked
+  reviewed. The network page asks the network to watch pages, adds and
+  forgets witnesses and syncs. Settings has the common ones as a form,
+  all of `keepword.toml` for the rest, the password, and a restart.
+  The CLI does all of this as before.
+
+### Changed
+
+- **The web UI asks for a password when it listens beyond localhost**,
+  as the container's does: the first visit sets it, or
+  `KEEPWORD_UI_PASSWORD`. On localhost it asks for none, unless one is
+  set, and only answers requests addressed to localhost, so no website
+  can reach it through a browser. `keepword serve --ui-auth none`
+  (`KEEPWORD_UI_AUTH`) leaves the login to a proxy in front of it.
+  Forms only work from the UI's own pages.
+- **`keepword serve` exits with status 75 when the web UI restarts it**
+  to apply new settings, for systemd (`Restart=on-failure`) or the
+  container runtime to start it again. The UI only offers to where one
+  of them runs it.
+- **The store's schema is version 6**: changes record when they were
+  reviewed. Once this version has opened a node's data, 2.4.0 refuses
+  it.
+
 ## [2.4.0] - 2026-10-20
 
 Witnesses at home, reached through relays, witnesses that need no
