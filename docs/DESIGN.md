@@ -173,13 +173,13 @@ other checks. `keepword verify --bundle FILE` needs no node, key or network,
 and neither does `keepword diff --bundle A B`, which diffs two bundles'
 normalized text once both verify.
 
-## 4. Normalization (v4, implemented)
+## 4. Normalization (v5, implemented)
 
 The output is line-oriented text, one block per line, which makes it
 diffable, readable and cheap to hash:
 
 ```
-keepword-norm/4 html
+keepword-norm/5 html
 title: Minister resigns
 modified: 2024-05-01T10:00:00Z
 h1: Minister resigns
@@ -199,6 +199,12 @@ The rules:
   vendors by prefix (OneTrust, Usercentrics, Cookiebot, Sourcepoint,
   Didomi, GPT slots, Taboola, Outbrain…), and user comments. Also anything
   matched by site `remove` selectors.
+- **Site chrome**: `<nav>`, elements with role `navigation`, `banner` or
+  `contentinfo`, and a `<header>` or `<footer>` outside any section
+  (`article`, `aside`, `main`, `section`, or an element with the matching
+  role). A site changes these on all its pages at once, and where a page
+  has no `<main>` they used to be part of its text. A section's own header
+  stays, with the title and "last updated" line it often holds.
 - **Text**: NFC, invisible characters removed, whitespace collapsed.
   Relative times ("5 minutes ago", "vor 3 Stunden", "il y a 2 jours")
   become `<reltime>`, and live counters ("1,234 views") become `<n> views`.
@@ -219,8 +225,9 @@ The rules:
 - **Images**: resolved and compared *without* query string (CDN resize
   parameters and signatures live there). `data:` URIs are replaced by
   their hash.
-- **Metadata**: `title`, canonical link, description, published and
-  modified dates (Open Graph meta or JSON-LD). A changed `modified:` line
+- **Metadata**: `title`, description, published and modified dates (Open
+  Graph meta or JSON-LD). The canonical link is left out: it is SEO
+  markup, which a site adds or changes on all its pages at once. A changed `modified:` line
   is how a publisher *discloses* an edit in machine-readable form.
 - **Charset**: Content-Type, then BOM, then `<meta charset>`, then UTF-8.
   A gzipped text body is inflated first, up to 32 MiB: servers may compress
@@ -266,7 +273,8 @@ behind one.
 `crates/keepword-normalize/tests/corpus/` holds pages modelled on common
 publishing stacks: a German public broadcaster's article, WordPress with
 Jetpack and Cloudflare email obfuscation, a SaaS privacy policy behind
-OneTrust, GOV.UK, and a JS-rendered status page. Each has variants that
+OneTrust, a corporate legal page without `<main>`, GOV.UK, and a
+JS-rendered status page. Each has variants that
 reproduce what changes between two real requests (rotated tokens, counters,
 ad slots, consent text, cache busters, re-keyed email obfuscation, clocks),
 which must normalize identically, and edits that must be caught and
@@ -275,12 +283,15 @@ classified as silent or disclosed. The fixtures are hand-built. Capturing
 of noise they lacked: a click redirect's per-visit token in a link's path,
 and Cloudflare obfuscating an address in one response but not the next.
 `scripts/noise-check.sh` repeats that over a watchlist: the cheapest way
-to grow the corpus.
+to grow the corpus. Site chrome was checked on 56 live policies: dropping
+it removed menus, footers and tables of contents, and no page title or
+"last updated" line.
 
 ### Known gaps
 
 - **Personalised and randomised blocks** ("people also read") that don't
-  use recognisable class names still need site rules.
+  use recognisable class names still need site rules, and so does site
+  chrome that isn't marked as such, like a footer in a plain `<div>`.
 - **Image content**: images are compared by URL, not bytes.
 - **A/B tests** look like cloaking to a single witness. The quorum logic
   (§6.5) is what distinguishes them.

@@ -230,6 +230,8 @@ struct Walker<'a> {
     buf: String,
     pending: Vec<String>,
     fetched_at_ms: i64,
+    /// How many sectioning elements the walk is in.
+    sections: usize,
 }
 
 /// An element whose children are being walked.
@@ -239,6 +241,8 @@ struct Open<'b> {
     kind: &'static str,
     /// A block: flushed as `kind` when its children are done.
     block: bool,
+    /// A section: counted in `Walker::sections` while it is open.
+    section: bool,
     children: Children<'b, Node>,
 }
 
@@ -283,7 +287,11 @@ impl<'a> Walker<'a> {
     fn enter<'b>(&mut self, el: ElementRef<'b>, kind: &'static str) -> Option<Open<'b>> {
         let v = el.value();
         let name = v.name();
-        if DROP.contains(&name) || self.skip.contains(&el.id()) || is_hidden(el) {
+        if DROP.contains(&name)
+            || self.skip.contains(&el.id())
+            || self.is_chrome(v)
+            || is_hidden(el)
+        {
             return None;
         }
         if v.attr("class").is_some_and(is_noise_token_list)
@@ -328,10 +336,13 @@ impl<'a> Walker<'a> {
             }
             None => (kind, false),
         };
+        let section = is_section(v);
+        self.sections += usize::from(section);
         Some(Open {
             el,
             kind,
             block,
+            section,
             children: el.children(),
         })
     }
@@ -341,6 +352,7 @@ impl<'a> Walker<'a> {
         if open.block {
             self.flush(open.kind);
         }
+        self.sections -= usize::from(open.section);
         let v = open.el.value();
         if is_html_a(v)
             && let Some(href) = v.attr("href").and_then(|h| clean_link(self.base, h))
@@ -349,6 +361,30 @@ impl<'a> Walker<'a> {
             self.pending.push(format!("link: {href} | {text}"));
         }
     }
+
+    /// Site navigation, banner and footer: the landmarks around a page's
+    /// content, which a site changes on all its pages at once. A header or
+    /// footer is one only outside any section.
+    fn is_chrome(&self, v: &scraper::node::Element) -> bool {
+        matches!(
+            v.attr("role"),
+            Some("navigation" | "banner" | "contentinfo")
+        ) || match v.name() {
+            "nav" => true,
+            "header" | "footer" => self.sections == 0,
+            _ => false,
+        }
+    }
+}
+
+/// A sectioning element, or one marked as one: a header or footer inside
+/// it is its own, not the site's.
+fn is_section(v: &scraper::node::Element) -> bool {
+    matches!(v.name(), "article" | "aside" | "main" | "section")
+        || matches!(
+            v.attr("role"),
+            Some("article" | "complementary" | "main" | "region")
+        )
 }
 
 /// A link's text, without the text of links inside it. Links don't nest in
@@ -447,13 +483,6 @@ pub fn normalize(
     if let Some(t) = first_text(&doc, "title") {
         lines.push(format!("title: {t}"));
     }
-    if let Some(c) = doc
-        .select(&sel(r#"link[rel="canonical"]"#))
-        .find_map(|e| e.value().attr("href"))
-        .and_then(|h| clean_link(base, h))
-    {
-        lines.push(format!("canonical: {c}"));
-    }
     if let Some(d) = meta(&doc, r#"meta[name="description"]"#) {
         lines.push(format!("description: {d}"));
     }
@@ -491,6 +520,11 @@ pub fn normalize(
         buf: String::new(),
         pending: Vec::new(),
         fetched_at_ms,
+        sections: root
+            .ancestors()
+            .filter_map(ElementRef::wrap)
+            .filter(|a| is_section(a.value()))
+            .count(),
     };
     w.walk(root, "text");
     w.flush("text");
@@ -533,6 +567,31 @@ mod tests {
         ] {
             assert!(parse(html) == Html::parse_document(html), "{html}");
         }
+    }
+
+    #[test]
+    fn site_chrome_is_dropped() {
+        let html = r#"<body><header><a href="/">Home</a></header>
+            <div role="navigation"><a href="/blog">Blog</a></div>
+            <article><div class="c"><header><h1>Terms</h1></header><nav>Contents</nav>
+            <p>Text</p></div></article><footer>© 2026</footer>"#;
+        let out = ["h1: Terms", "p: Text"];
+        assert_eq!(normalize(html, &base(), None, 0), out);
+        // Below the article, a header is the article's, also from a root
+        // inside it.
+        let rules = SiteRules {
+            host: "e.example".into(),
+            remove: vec![],
+            root: Some(".c".into()),
+        };
+        assert_eq!(normalize(html, &base(), Some(&rules), 0), out);
+        // Or below an element marked as one.
+        let marked = html
+            .replace("<article>", r#"<div role="main">"#)
+            .replace("</article>", "</div>");
+        assert_eq!(normalize(&marked, &base(), None, 0), out);
+        let html = html.replace("article", "div");
+        assert_eq!(normalize(&html, &base(), None, 0), ["p: Text"]);
     }
 
     #[test]
