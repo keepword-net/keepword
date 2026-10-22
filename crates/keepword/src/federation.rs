@@ -870,6 +870,42 @@ impl Node {
         Ok(n)
     }
 
+    /// Ask again, for as long as before, for the pages this node still
+    /// watches itself, before its requests for them run out: a page asked
+    /// to the network when it was added stays watched by other witnesses as
+    /// long as here. A request is renewed with a quarter of its time left:
+    /// a renewed one has all of it, so isn't renewed again for a while.
+    /// Returns how many were renewed.
+    pub fn renew_requests(&self, now: i64) -> Result<usize> {
+        let watched: HashSet<String> = self
+            .store
+            .watches()?
+            .into_iter()
+            .filter(|w| w.request_id.is_none())
+            .map(|w| w.url)
+            .collect();
+        let mut renewed = HashSet::new();
+        let mut failed = None;
+        for r in self.store.requests_by(&self.key.public(), now)? {
+            let b = &r.body;
+            let span = (b.expires_at_ms - b.issued_at_ms).min(MAX_REQUEST_MS);
+            if !watched.contains(&b.url)
+                || span <= 0
+                || b.expires_at_ms - now > span / 4
+                || !renewed.insert(b.url.clone())
+            {
+                continue;
+            }
+            if let Err(e) = self.replace_request(&b.url, b.every_secs, span, b.render) {
+                failed = Some(e.context(format!("renewing the request for {}", b.url)));
+            }
+        }
+        match failed {
+            Some(e) => Err(e),
+            None => Ok(renewed.len()),
+        }
+    }
+
     /// Fetch a peer's descriptor from its endpoint and add it.
     pub async fn add_peer(&self, endpoint: &str) -> Result<Signed<Descriptor>> {
         let d: Signed<Descriptor> = self.net.get_json(&join(endpoint, "/v1/descriptor")).await?;
@@ -1079,6 +1115,8 @@ impl Node {
         // others, least of all pruning.
         let r = self.refresh_candidates(now_ms()).map(|_| ());
         note(&mut report, "candidates", r);
+        let r = self.renew_requests(now_ms()).map(|_| ());
+        note(&mut report, "renew", r);
         let r = self.reconcile_requests().await.map(|_| ());
         note(&mut report, "requests", r);
         let r = self.run_rechecks().await.map(|_| ());
@@ -1665,6 +1703,34 @@ mod tests {
             w.contains("federation is off") && !w.contains("no peer synced"),
             "{w}"
         );
+    }
+
+    #[test]
+    fn requests_are_renewed_while_their_pages_are_watched() {
+        let t = tempfile::tempdir().unwrap();
+        Node::init(t.path(), &crate::config::Config::default()).unwrap();
+        let node = Node::open(t.path()).unwrap();
+        let now = now_ms();
+        let week = 7 * 86_400_000;
+        let (watched, dropped) = ("https://a.example/terms", "https://b.example/terms");
+        for u in [watched, dropped] {
+            node.store.watch_add(u, 3600, false, now).unwrap();
+            node.replace_request(u, 3600, week, false).unwrap();
+        }
+        node.store.watch_remove(dropped).unwrap();
+        // A fresh request isn't due.
+        assert_eq!(node.renew_requests(now).unwrap(), 0);
+        // Six days on, with a day left: only the page still watched here.
+        let later = now + 6 * 86_400_000;
+        assert_eq!(node.renew_requests(later).unwrap(), 1);
+        let mine = node.store.requests_by(&node.key.public(), now).unwrap();
+        let by_url = |u: &str| mine.iter().filter(|r| r.body.url == u).collect::<Vec<_>>();
+        let renewed = by_url(watched);
+        assert_eq!(renewed.len(), 1, "the old one is withdrawn");
+        assert!(renewed[0].body.expires_at_ms - now_ms() > week - 60_000);
+        assert_eq!(by_url(dropped).len(), 1);
+        // Renewed, it has all its time again.
+        assert_eq!(node.renew_requests(now_ms()).unwrap(), 0);
     }
 
     #[test]
