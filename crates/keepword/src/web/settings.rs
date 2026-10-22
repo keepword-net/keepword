@@ -151,7 +151,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                             input type="number" name="timeout" min="5" max="300" value=(saved.capture.timeout_secs);
                         }
                     }
-                    label { "Browser name sent to sites (empty for Keepword's own)"
+                    label { "User agent sent to sites (empty for Keepword's own)"
                         input type="text" name="user_agent" value=[saved.capture.user_agent.as_deref()] autocomplete="off";
                     }
                 }
