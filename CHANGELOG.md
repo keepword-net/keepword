@@ -37,7 +37,7 @@ only change incompatibly in a new major version.
   to every witness; an address with a secret in its query (`token`,
   `key`, `session`, …) is only watched here, and past the 50 requests the
   network takes from a node the rest aren't asked.
-- **Normalized text is `keepword-norm/5`**, for the fixes below. Captures
+- **Normalized text is `keepword-norm/6`**, for the fixes below. Captures
   only compare when they were normalized the same way: until every
   witness upgrades, verdicts and rechecks draw on fewer witnesses, and a
   witness doesn't compare a URL's first capture after the upgrade with
@@ -77,6 +77,13 @@ only change incompatibly in a new major version.
   bot check is now a failed capture, retried next round, and the page
   says who blocked it: eBay's captcha and Cloudflare's challenges
   (`cf-mitigated: challenge`, whatever their status).
+- **DuckDuckGo relabelling a link raised a silent-edit alert.** Its
+  `origin` parameter on its own links only tags them for its analytics
+  (`origin=funnel_app` became `funnel_browser`), and is now dropped like
+  `utm_*`.
+- **A year before "View" was masked as a view counter.** "Effective from
+  November 26, 2025 View the previous notice" read `<n> View`, which would
+  have hidden a new effective date's year. A year is no longer a count.
 - **A peer looked fine as long as its last sync had worked, however long
   ago.** A round syncs a sample of the peers, so one that went down
   wasn't noticed until it was picked again, and if the node stopped

@@ -173,13 +173,13 @@ other checks. `keepword verify --bundle FILE` needs no node, key or network,
 and neither does `keepword diff --bundle A B`, which diffs two bundles'
 normalized text once both verify.
 
-## 4. Normalization (v5, implemented)
+## 4. Normalization (v6, implemented)
 
 The output is line-oriented text, one block per line, which makes it
 diffable, readable and cheap to hash:
 
 ```
-keepword-norm/5 html
+keepword-norm/6 html
 title: Minister resigns
 modified: 2024-05-01T10:00:00Z
 h1: Minister resigns
@@ -207,7 +207,8 @@ The rules:
   stays, with the title and "last updated" line it often holds.
 - **Text**: NFC, invisible characters removed, whitespace collapsed.
   Relative times ("5 minutes ago", "vor 3 Stunden", "il y a 2 jours")
-  become `<reltime>`, and live counters ("1,234 views") become `<n> views`.
+  become `<reltime>`, and live counters ("1,234 views") become `<n> views`,
+  unless the number is a year ("May 1, 2025 View the previous notice").
   `<time datetime>` is replaced by its machine-readable value. Addresses
   hidden by Cloudflare's email obfuscation (`[email protected]`, re-keyed
   per response, and some responses not obfuscated at all) are decoded.
@@ -216,7 +217,8 @@ The rules:
   within 90 s modulo whole hours). `fetched_at` is signed, so verifiers get
   the same result.
 - **Links**: resolved, fragment dropped, tracking parameters (`utm_*`,
-  `fbclid`, `gclid`, …) removed. Known click redirects that carry a
+  `fbclid`, `gclid`, …) removed, and a few sites' own analytics tags on
+  their links (DuckDuckGo's `origin`). Known click redirects that carry a
   per-visit token in the path (`claude.ai/redirect/<token>/…`) have it
   masked; other IDs in paths are documents and stay. Cloudflare's
   `/cdn-cgi/l/email-protection` links are `mailto:` links, dropped like
