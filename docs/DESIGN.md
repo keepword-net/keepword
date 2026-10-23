@@ -254,9 +254,18 @@ are part of the profile.
 ### Silent-edit classification
 
 A change is **disclosed** if an *added* line is a new `modified:` date, or
-matches an update notice ("Update:", "Last updated", "Correction",
-"Editor's note", "Stand:", "aktualisiert", "Korrektur", "Anmerkung der
-Redaktion", "mise à jour", …).
+an update notice: a notice word ("updated", "Last modified", "Effective",
+"comes into effect", "Correction", "Stand", "aktualisiert", "Korrektur",
+"mise à jour", …) next to a date or time ("Last updated: May 15, 2026",
+"Effective Date: July 20, 2026"), or in a notice's own form: a label
+opening the line ("Update:", "Editor's note:", "Stand:") or a page saying
+it changed ("this article has been updated", "in einer früheren
+Version"). Policies use the same words in their prose ("we may update
+this policy", "the right to correction", "before the changes take
+effect"), so a word alone isn't a notice: rewording such a sentence would
+pass as disclosed. Of the 248 lines with a notice word in 57 live
+policies, the 52 kept were all notices, and the 196 left were prose but
+for three announcements without a date, which read as silent.
 Otherwise it is **silent**. Removing a correction notice does not count as
 disclosure, nor does one the page already had: a line the diff removes as
 often as it adds was moved. When the normalized text wasn't retained, a

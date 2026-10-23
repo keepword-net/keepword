@@ -84,6 +84,17 @@ only change incompatibly in a new major version.
 - **A year before "View" was masked as a view counter.** "Effective from
   November 26, 2025 View the previous notice" read `<n> View`, which would
   have hidden a new effective date's year. A year is no longer a count.
+- **Rewording a policy's prose about updates passed an edit off as
+  disclosed.** Any added line with "update", "correction" or
+  "Berichtigung" was taken for a notice, and those words fill policies:
+  "We may update this Privacy Policy from time to time", "the right to
+  correction". 48 of 57 live policies had such lines. A notice now needs
+  a date or time next to the word ("Last updated: May 15, 2026"), or a
+  notice's own form ("Update:", "this article has been updated").
+  "Effective" and "comes into effect" with a date count too, so a new
+  "Effective Date" line or an announced version ("comes into effect on 11
+  November 2026") no longer raises a silent-edit alert. An announcement
+  without a date now reads as silent.
 - **A peer looked fine as long as its last sync had worked, however long
   ago.** A round syncs a sample of the peers, so one that went down
   wasn't noticed until it was picked again, and if the node stopped
