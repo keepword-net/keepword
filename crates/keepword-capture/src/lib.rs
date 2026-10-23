@@ -41,6 +41,8 @@ pub enum CaptureError {
     Fetch(String),
     #[error("refused: {0}")]
     Refused(String),
+    #[error("blocked by {0}'s bot check")]
+    Blocked(&'static str),
     #[error("response body larger than {0} bytes")]
     TooLarge(usize),
     #[error("browser: {0}")]

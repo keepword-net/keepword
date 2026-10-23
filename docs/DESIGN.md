@@ -266,7 +266,10 @@ Only captures that got the same status are compared: a change of status,
 say a 403 blip, is recorded as just that, as an error page against the
 page says nothing about an edit. Back from an error, a page is compared
 with the last capture that succeeded the same way, so an edit can't hide
-behind one.
+behind one. A bot check that answers in the page's place isn't recorded at
+all: the capture fails, as eBay serves its captcha with 200. Known are
+Cloudflare's challenges (`cf-mitigated: challenge`) and eBay's redirect to
+`/splashui/`.
 
 ### Regression corpus
 
