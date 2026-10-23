@@ -586,3 +586,81 @@ async fn a_config_file_broken_by_hand_can_be_fixed_and_isnt_restarted_with() {
     let fixed = get(&app, "/settings", "").await.body;
     assert!(!fixed.contains("isn't valid") && fixed.contains("Where this node is"));
 }
+
+#[tokio::test]
+async fn added_pages_are_asked_to_the_network_unless_private_or_over_the_cap() {
+    let t = tempfile::tempdir().unwrap();
+    let mut cfg = Config::default();
+    cfg.beacon.drand_url = None;
+    cfg.network.peers = vec!["https://seed.example".into()];
+    cfg.network.max_requests_per_requester = 2;
+    Node::init(t.path(), &cfg).unwrap();
+    let n = Arc::new(Node::open(t.path()).unwrap());
+    let app = ui(&n, UiAuth::LocalOnly);
+    let page = get(&app, "/pages", "").await.body;
+    assert!(page.contains(r#"name="network" checked>"#), "{page}");
+    assert!(page.contains("0 of 2 network requests in use"));
+    let token = csrf(&page);
+    let urls = "https://a.example/terms\nhttps://b.example/doc?session=abc\n\
+                https://c.example/terms\nhttps://d.example/terms";
+    let r = post(
+        &app,
+        "/pages/add",
+        "",
+        &[
+            ("csrf", &token),
+            ("urls", urls),
+            ("every", "3600"),
+            ("network", "on"),
+        ],
+    )
+    .await;
+    let msg = get(&app, &r.location, &r.cookies.join("; ")).await.body;
+    let now = keepword_core::now_ms();
+    let asked: Vec<String> = n
+        .store
+        .requests_by(&n.key.public(), now)
+        .unwrap()
+        .into_iter()
+        .map(|r| r.body.url)
+        .collect();
+    assert_eq!(
+        asked,
+        ["https://a.example/terms", "https://c.example/terms"]
+    );
+    assert!(
+        msg.contains("looks private") && msg.contains("1 more weren"),
+        "{msg}"
+    );
+    // All of them are watched here.
+    assert_eq!(n.store.watches().unwrap().len(), 4);
+    // At the cap, the box is off.
+    let page = get(&app, "/pages", "").await.body;
+    assert!(page.contains(r#"name="network" disabled>"#) && page.contains("none left"));
+}
+
+#[tokio::test]
+async fn a_watched_page_is_asked_for_as_long_as_it_is_watched() {
+    let t = tempfile::tempdir().unwrap();
+    let mut cfg = Config::default();
+    cfg.beacon.drand_url = None;
+    cfg.network.peers = vec!["https://seed.example".into()];
+    Node::init(t.path(), &cfg).unwrap();
+    let n = Arc::new(Node::open(t.path()).unwrap());
+    let app = ui(&n, UiAuth::LocalOnly);
+    let url = "https://a.example/terms";
+    n.store
+        .watch_add(url, 3600, false, keepword_core::now_ms())
+        .unwrap();
+    // Renewed while watched: no "for how long" to choose.
+    let page = get(&app, &format!("/page?u={url}"), "").await.body;
+    assert!(!page.contains(r#"<select name="days">"#), "{page}");
+    assert!(page.contains("for as long as you watch the page"));
+    // Any address: how long, and that watched ones are renewed.
+    let network = get(&app, "/network", "").await.body;
+    assert!(network.contains(r#"<select name="days">"#));
+    assert!(
+        network.contains("asked again while you watch it")
+            && network.contains("goes to every witness")
+    );
+}

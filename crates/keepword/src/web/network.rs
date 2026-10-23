@@ -12,7 +12,6 @@ use keepword_store::net::Peer;
 use maud::{Markup, html};
 
 use super::auth::{Post, flash};
-use super::pages::REQUEST_DAYS;
 use super::view::{self, Ctx, Nav};
 use super::{Ui, WebResult, bad_request};
 use crate::federation::PeerState;
@@ -37,6 +36,10 @@ fn state_badge(p: &Peer, now: i64) -> Markup {
     html! { span class=(class) title=(why) { (s.label()) } }
 }
 
+/// How long the network is asked to watch a page by default, and for as
+/// long as a page watched here is watched (renewed).
+const REQUEST_DAYS: u64 = (crate::federation::LEASE_MS / 86_400_000) as u64;
+
 /// The form that asks the network to watch a page.
 pub(super) fn request_form(ui: &Ui, url: Option<&str>, every: u64) -> Markup {
     if !super::joined(&ui.node) {
@@ -47,6 +50,14 @@ pub(super) fn request_form(ui: &Ui, url: Option<&str>, every: u64) -> Markup {
             }
         };
     }
+    // A request for a page this node watches is asked again while it does
+    // (`Node::renew_requests`): how long to ask for would mean nothing.
+    let watched_here = url.is_some_and(|u| {
+        ui.node
+            .store
+            .watches()
+            .is_ok_and(|ws| ws.iter().any(|w| w.url == u && w.request_id.is_none()))
+    });
     html! {
         form.stack method="post" action="/network/request" {
             (view::csrf(ui))
@@ -60,17 +71,27 @@ pub(super) fn request_form(ui: &Ui, url: Option<&str>, every: u64) -> Markup {
             }
             div.row-fields {
                 label { "Check" (view::interval_select("every", every)) }
-                label { "For"
-                    select name="days" {
-                        @for d in [1u64, 3, 7, 14, 30] {
-                            option value=(d) selected[d == REQUEST_DAYS] { (d) (if d == 1 { " day" } else { " days" }) }
+                @if watched_here {
+                    input type="hidden" name="days" value=(REQUEST_DAYS);
+                } @else {
+                    label { "For"
+                        select name="days" {
+                            @for d in [1u64, 3, 7, 14, 30] {
+                                option value=(d) selected[d == REQUEST_DAYS] { (d) (if d == 1 { " day" } else { " days" }) }
+                            }
                         }
                     }
                 }
             }
             p.muted.small {
                 "Witnesses drawn at random, in different countries and networks, capture it too, "
-                "so nobody has to take this node's word for what the page said."
+                "so nobody has to take this node's word for what the page said. "
+                "Its address goes to every witness. "
+                @if watched_here {
+                    "It's asked again for as long as you watch the page; withdraw it on the Network page to stop."
+                } @else {
+                    "For a page this node watches, it's asked again while you watch it."
+                }
             }
             div { button.btn.primary.small type="submit" { "Ask the network" } }
         }
@@ -93,12 +114,14 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         .filter(|r| r.body.requester != node.key.public())
         .count();
     let joined = super::joined(node);
-    let for_network = node
-        .store
-        .watches()?
+    let watches = node.store.watches()?;
+    let for_network = watches.iter().filter(|w| w.request_id.is_some()).count();
+    // Pages watched here and asked about: this node keeps asking.
+    let watched: std::collections::HashSet<&str> = watches
         .iter()
-        .filter(|w| w.request_id.is_some())
-        .count();
+        .filter(|w| w.request_id.is_none() && w.network)
+        .map(|w| w.url.as_str())
+        .collect();
     // What `keepword net status` warns about, but that federation is off:
     // "Reachable" says so, with what to do.
     let warnings: Vec<String> = crate::status_warnings(node, me.is_some())?
@@ -161,7 +184,10 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             }
         }
         section #request {
-            h2 { "Pages you asked the network to watch" }
+            div.section-head {
+                h2 { "Pages you asked the network to watch" }
+                span.muted.small { (mine.len()) " of " (node.config.network.max_requests_per_requester) " in use" }
+            }
             @if mine.is_empty() {
                 p.muted { "None yet." }
             } @else {
@@ -170,7 +196,10 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                         li.row {
                             a.grow href=(view::page_link(&r.body.url)) {
                                 (view::address(&r.body.url))
-                                div.sub { (view::every(r.body.every_secs)) " · until " (view::absolute(r.body.expires_at_ms)) }
+                                div.sub {
+                                    (view::every(r.body.every_secs)) " · until " (view::absolute(r.body.expires_at_ms))
+                                    @if watched.contains(r.body.url.as_str()) { " · asked again while you watch it" }
+                                }
                             }
                             (view::button(&ui, "/network/withdraw", &[("u", &r.body.url)], "Withdraw", "ghost small",
                                 Some("Withdraw this request? Witnesses stop after their next sync.")))
@@ -304,14 +333,12 @@ pub(super) async fn request(State(ui): State<Ui>, form: Post) -> WebResult<Respo
 }
 
 pub(super) async fn withdraw(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
-    Ok(match ui.node.cancel_requests(form.get("u"))? {
-        0 => flash(
-            "/network#request",
-            "error",
-            "There was no active request for it.",
-        ),
+    let back = super::change::safe_back(form.get("back"), "/network#request");
+    Ok(match ui.node.withdraw_requests(form.get("u"))? {
+        // It ran out while the node was down: it isn't asked about again.
+        0 => flash(&back, "ok", "It won't be asked about again."),
         _ => flash(
-            "/network#request",
+            &back,
             "ok",
             "Withdrawn. Witnesses stop after their next sync.",
         ),
