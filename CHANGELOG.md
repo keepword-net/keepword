@@ -37,7 +37,7 @@ only change incompatibly in a new major version.
   to every witness; an address with a secret in its query (`token`,
   `key`, `session`, …) is only watched here, and past the 50 requests the
   network takes from a node the rest aren't asked.
-- **Normalized text is `keepword-norm/5`**, for the fixes below. Captures
+- **Normalized text is `keepword-norm/6`**, for the fixes below. Captures
   only compare when they were normalized the same way: until every
   witness upgrades, verdicts and rechecks draw on fewer witnesses, and a
   witness doesn't compare a URL's first capture after the upgrade with
@@ -71,6 +71,30 @@ only change incompatibly in a new major version.
 - **Adding a canonical link raised a silent-edit alert.** The
   `canonical:` line is gone from the normalized text: it is SEO markup a
   site changes on all its pages at once, not content.
+- **A bot check raised a silent-edit alert, and the page coming back a
+  disclosed edit.** eBay redirects a node it doubts, often one on a VPS,
+  to a captcha it serves with 200, so it was compared with the policy. A
+  bot check is now a failed capture, retried next round, and the page
+  says who blocked it: eBay's captcha and Cloudflare's challenges
+  (`cf-mitigated: challenge`, whatever their status).
+- **DuckDuckGo relabelling a link raised a silent-edit alert.** Its
+  `origin` parameter on its own links only tags them for its analytics
+  (`origin=funnel_app` became `funnel_browser`), and is now dropped like
+  `utm_*`.
+- **A year before "View" was masked as a view counter.** "Effective from
+  November 26, 2025 View the previous notice" read `<n> View`, which would
+  have hidden a new effective date's year. A year is no longer a count.
+- **Rewording a policy's prose about updates passed an edit off as
+  disclosed.** Any added line with "update", "correction" or
+  "Berichtigung" was taken for a notice, and those words fill policies:
+  "We may update this Privacy Policy from time to time", "the right to
+  correction". 48 of 57 live policies had such lines. A notice now needs
+  a date or time next to the word ("Last updated: May 15, 2026"), or a
+  notice's own form ("Update:", "this article has been updated").
+  "Effective" and "comes into effect" with a date count too, so a new
+  "Effective Date" line or an announced version ("comes into effect on 11
+  November 2026") no longer raises a silent-edit alert. An announcement
+  without a date now reads as silent.
 - **A peer looked fine as long as its last sync had worked, however long
   ago.** A round syncs a sample of the peers, so one that went down
   wasn't noticed until it was picked again, and if the node stopped

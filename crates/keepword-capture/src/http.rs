@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use keepword_core::{CaptureMethod, now_ms};
-use reqwest::header::LOCATION;
+use reqwest::header::{HeaderMap, LOCATION};
 use reqwest::redirect::Policy;
 use sha2::{Digest as _, Sha256};
 use url::Url;
@@ -156,6 +156,10 @@ impl HttpCapturer {
         redirects: Vec<Url>,
         mut resp: reqwest::Response,
     ) -> Result<Captured, CaptureError> {
+        // Not the page: compared with it, a bot check reads as an edit.
+        if let Some(by) = bot_check(&final_url, resp.headers()) {
+            return Err(CaptureError::Blocked(by));
+        }
         let fetched_at_ms = now_ms();
         let status = resp.status();
         // Through a proxy, the peer address is the proxy's, and reqwest
@@ -222,6 +226,25 @@ impl HttpCapturer {
     }
 }
 
+/// Who answered with a bot check instead of the page. Cloudflare marks its
+/// challenges with a header, whatever their status; eBay redirects to a
+/// captcha it serves with 200.
+fn bot_check(final_url: &Url, headers: &HeaderMap) -> Option<&'static str> {
+    let ebay = final_url
+        .host_str()
+        .is_some_and(|h| h.split('.').any(|l| l == "ebay"));
+    if headers
+        .get("cf-mitigated")
+        .is_some_and(|v| v == "challenge")
+    {
+        Some("Cloudflare")
+    } else if ebay && final_url.path().starts_with("/splashui/") {
+        Some("eBay")
+    } else {
+        None
+    }
+}
+
 fn error_chain(e: &dyn std::error::Error) -> String {
     let mut s = e.to_string();
     let mut src = e.source();
@@ -231,4 +254,25 @@ fn error_chain(e: &dyn std::error::Error) -> String {
         src = inner.source();
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bot_checks() {
+        let url = |s: &str| Url::parse(s).unwrap();
+        let mut cf = HeaderMap::new();
+        cf.insert("cf-mitigated", "challenge".parse().unwrap());
+        let page = url("https://www.perplexity.ai/hub/legal/privacy-notice");
+        assert_eq!(bot_check(&page, &cf), Some("Cloudflare"));
+        assert_eq!(bot_check(&page, &HeaderMap::new()), None);
+        let captcha = url("https://www.ebay.co.uk/splashui/captcha?ap=1&appName=orch");
+        assert_eq!(bot_check(&captcha, &HeaderMap::new()), Some("eBay"));
+        let policy = url("https://www.ebay.com/help/policies/user-privacy-notice?id=4260");
+        assert_eq!(bot_check(&policy, &HeaderMap::new()), None);
+        let elsewhere = url("https://example.com/splashui/captcha");
+        assert_eq!(bot_check(&elsewhere, &HeaderMap::new()), None);
+    }
 }

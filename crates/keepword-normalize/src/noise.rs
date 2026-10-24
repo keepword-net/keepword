@@ -25,7 +25,7 @@ static RELTIME: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 
 static COUNTERS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b\d[\d.,]*\s*[kKmM]?\s+(views?|comments?|likes?|shares?|reads?|readers?|followers?|Kommentare?|Aufrufe|Leser|Views)\b",
+        r"(?i)\b(\d[\d.,]*)\s*[kKmM]?\s+(views?|comments?|likes?|shares?|reads?|readers?|followers?|Kommentare?|Aufrufe|Leser|Views)\b",
     )
     .expect("valid regex")
 });
@@ -55,7 +55,18 @@ pub fn clean_text(s: &str) -> String {
         }
     }
     if COUNTERS.is_match(&s) {
-        s = COUNTERS.replace_all(&s, "<n> $1").into_owned();
+        // A year is a date's, not a count: "effective from May 1, 2025 View
+        // the previous notice".
+        s = COUNTERS
+            .replace_all(&s, |c: &regex::Captures| {
+                let n = c[1].trim_end_matches(['.', ',']);
+                if n.len() == 4 && (n.starts_with("19") || n.starts_with("20")) {
+                    c[0].to_string()
+                } else {
+                    format!("<n> {}", &c[2])
+                }
+            })
+            .into_owned();
     }
     s
 }
@@ -97,9 +108,16 @@ const TRACKING_PARAMS: &[&str] = &[
     "nocache",
 ];
 
-fn is_tracking(k: &str) -> bool {
+/// Parameters that only tag a site's links to itself for its analytics,
+/// which it relabels at will (`duckduckgo.com/app?origin=funnel_browser`).
+const SITE_TRACKING_PARAMS: &[(&str, &str)] = &[("duckduckgo.com", "origin")];
+
+fn is_tracking(host: &str, k: &str) -> bool {
     let k = k.to_ascii_lowercase();
-    k.starts_with("utm_") || k.starts_with("pk_") || TRACKING_PARAMS.contains(&k.as_str())
+    k.starts_with("utm_")
+        || k.starts_with("pk_")
+        || TRACKING_PARAMS.contains(&k.as_str())
+        || SITE_TRACKING_PARAMS.contains(&(host, k.as_str()))
 }
 
 /// Click redirects whose path segment after a prefix is a token that
@@ -141,9 +159,10 @@ pub fn clean_link(base: &Url, href: &str) -> Option<String> {
     }
     u.set_fragment(None);
     if u.query().is_some() {
+        let host = u.host_str().unwrap_or_default();
         let kept: Vec<(String, String)> = u
             .query_pairs()
-            .filter(|(k, _)| !is_tracking(k))
+            .filter(|(k, _)| !is_tracking(host, k))
             .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect();
         if kept.is_empty() {
@@ -286,6 +305,12 @@ mod tests {
         );
         assert_eq!(clean_text("an hour ago"), "<reltime>");
         assert_eq!(clean_text("1,234 views"), "<n> views");
+        assert_eq!(clean_text("2.1K Views"), "<n> Views");
+        assert_eq!(
+            clean_text("effective from November 26, 2025 View the previous notice"),
+            "effective from November 26, 2025 View the previous notice"
+        );
+        assert_eq!(clean_text("in May 2025. View all"), "in May 2025. View all");
         assert_eq!(clean_text("I went 5 miles ago"), "I went 5 miles ago");
     }
 
@@ -313,6 +338,15 @@ mod tests {
             "https://example.com/i.png"
         );
         assert!(clean_link(&base, "/cdn-cgi/l/email-protection#e3908e82").is_none());
+        // A site's own analytics tag, on its links only.
+        assert_eq!(
+            clean_link(&base, "https://duckduckgo.com/app?origin=funnel_browser").unwrap(),
+            "https://duckduckgo.com/app"
+        );
+        assert_eq!(
+            clean_link(&base, "/flights?origin=BER").unwrap(),
+            "https://example.com/flights?origin=BER"
+        );
     }
 
     #[test]

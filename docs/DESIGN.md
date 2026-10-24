@@ -173,13 +173,13 @@ other checks. `keepword verify --bundle FILE` needs no node, key or network,
 and neither does `keepword diff --bundle A B`, which diffs two bundles'
 normalized text once both verify.
 
-## 4. Normalization (v5, implemented)
+## 4. Normalization (v6, implemented)
 
 The output is line-oriented text, one block per line, which makes it
 diffable, readable and cheap to hash:
 
 ```
-keepword-norm/5 html
+keepword-norm/6 html
 title: Minister resigns
 modified: 2024-05-01T10:00:00Z
 h1: Minister resigns
@@ -207,7 +207,8 @@ The rules:
   stays, with the title and "last updated" line it often holds.
 - **Text**: NFC, invisible characters removed, whitespace collapsed.
   Relative times ("5 minutes ago", "vor 3 Stunden", "il y a 2 jours")
-  become `<reltime>`, and live counters ("1,234 views") become `<n> views`.
+  become `<reltime>`, and live counters ("1,234 views") become `<n> views`,
+  unless the number is a year ("May 1, 2025 View the previous notice").
   `<time datetime>` is replaced by its machine-readable value. Addresses
   hidden by Cloudflare's email obfuscation (`[email protected]`, re-keyed
   per response, and some responses not obfuscated at all) are decoded.
@@ -216,7 +217,8 @@ The rules:
   within 90 s modulo whole hours). `fetched_at` is signed, so verifiers get
   the same result.
 - **Links**: resolved, fragment dropped, tracking parameters (`utm_*`,
-  `fbclid`, `gclid`, …) removed. Known click redirects that carry a
+  `fbclid`, `gclid`, …) removed, and a few sites' own analytics tags on
+  their links (DuckDuckGo's `origin`). Known click redirects that carry a
   per-visit token in the path (`claude.ai/redirect/<token>/…`) have it
   masked; other IDs in paths are documents and stay. Cloudflare's
   `/cdn-cgi/l/email-protection` links are `mailto:` links, dropped like
@@ -252,9 +254,18 @@ are part of the profile.
 ### Silent-edit classification
 
 A change is **disclosed** if an *added* line is a new `modified:` date, or
-matches an update notice ("Update:", "Last updated", "Correction",
-"Editor's note", "Stand:", "aktualisiert", "Korrektur", "Anmerkung der
-Redaktion", "mise à jour", …).
+an update notice: a notice word ("updated", "Last modified", "Effective",
+"comes into effect", "Correction", "Stand", "aktualisiert", "Korrektur",
+"mise à jour", …) next to a date or time ("Last updated: May 15, 2026",
+"Effective Date: July 20, 2026"), or in a notice's own form: a label
+opening the line ("Update:", "Editor's note:", "Stand:") or a page saying
+it changed ("this article has been updated", "in einer früheren
+Version"). Policies use the same words in their prose ("we may update
+this policy", "the right to correction", "before the changes take
+effect"), so a word alone isn't a notice: rewording such a sentence would
+pass as disclosed. Of the 248 lines with a notice word in 57 live
+policies, the 52 kept were all notices, and the 196 left were prose but
+for three announcements without a date, which read as silent.
 Otherwise it is **silent**. Removing a correction notice does not count as
 disclosure, nor does one the page already had: a line the diff removes as
 often as it adds was moved. When the normalized text wasn't retained, a
@@ -266,7 +277,10 @@ Only captures that got the same status are compared: a change of status,
 say a 403 blip, is recorded as just that, as an error page against the
 page says nothing about an edit. Back from an error, a page is compared
 with the last capture that succeeded the same way, so an edit can't hide
-behind one.
+behind one. A bot check that answers in the page's place isn't recorded at
+all: the capture fails, as eBay serves its captcha with 200. Known are
+Cloudflare's challenges (`cf-mitigated: challenge`) and eBay's redirect to
+`/splashui/`.
 
 ### Regression corpus
 
