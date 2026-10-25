@@ -72,6 +72,10 @@ only change incompatibly in a new major version.
   `canonical:` line is gone from the normalized text: it is SEO markup a
   site changes on all its pages at once, not content.
 - **A bot check raised a silent-edit alert, and the page coming back a
+- **A witness behind a relay looked like the relay.** The network page
+  and alerts named it by its address's host, which is the relay's, so
+  one at home relayed by seed1.keepword.net showed as seed1 with another
+  key, and its alerts as seed1's. It now shows "through" the relay.
   disclosed edit.** eBay redirects a node it doubts, often one on a VPS,
   to a captcha it serves with 200, so it was compared with the policy. A
   bot check is now a failed capture, retried next round, and the page

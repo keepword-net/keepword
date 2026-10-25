@@ -30,11 +30,12 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         let from = if a.issuer == me {
             "this node".to_string()
         } else {
-            node.store
-                .peer(&a.issuer)?
-                .and_then(|p| p.endpoint)
-                .and_then(|e| Some(url::Url::parse(&e).ok()?.host_str()?.to_string()))
-                .unwrap_or_else(|| format!("witness {}", a.issuer.short()))
+            let ep = node.store.peer(&a.issuer)?.and_then(|p| p.endpoint);
+            match ep.as_deref().and_then(crate::relay::endpoint_host) {
+                Some((h, false)) => h,
+                Some((h, true)) => format!("witness {} through {h}", a.issuer.short()),
+                None => format!("witness {}", a.issuer.short()),
+            }
         };
         let prefix = format!("{}: ", a.kind.label());
         let summary = a

@@ -326,6 +326,13 @@ fn candidates(node: &Node) -> anyhow::Result<Vec<String>> {
     Ok(relays)
 }
 
+/// The host a witness's endpoint names, and whether that is the host of
+/// the relay it is reached through, which is a witness of its own.
+pub fn endpoint_host(endpoint: &str) -> Option<(String, bool)> {
+    let u = url::Url::parse(endpoint).ok()?;
+    Some((u.host_str()?.to_string(), u.path().contains("/v1/relay/")))
+}
+
 /// Poll `relay` until it fails. The first poll it accepts makes it this
 /// node's endpoint.
 async fn serve_via(
@@ -438,4 +445,23 @@ async fn handle(api: &Router, r: Relayed) -> Answer {
         answer.body = B64.encode(b);
     }
     answer
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_relayed_endpoint_is_told_from_its_relay() {
+        let host = endpoint_host;
+        assert_eq!(
+            host("https://seed1.keepword.net"),
+            Some(("seed1.keepword.net".into(), false))
+        );
+        assert_eq!(
+            host("https://seed1.keepword.net/v1/relay/ab12"),
+            Some(("seed1.keepword.net".into(), true))
+        );
+        assert_eq!(host("not a url"), None);
+    }
 }

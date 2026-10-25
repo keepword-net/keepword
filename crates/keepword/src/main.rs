@@ -1132,8 +1132,11 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     "this node".to_string()
                 } else {
                     let ep = node.store.peer(&a.issuer)?.and_then(|p| p.endpoint);
-                    ep.and_then(|e| Some(url::Url::parse(&e).ok()?.host_str()?.to_string()))
-                        .unwrap_or_else(|| a.issuer.short())
+                    match ep.as_deref().and_then(keepword::relay::endpoint_host) {
+                        Some((h, false)) => h,
+                        Some((h, true)) => format!("{} through {h}", a.issuer.short()),
+                        None => a.issuer.short(),
+                    }
                 };
                 println!(
                     "{}  {kind:<12}  {}  {}{repeats}  ({from})",
