@@ -37,7 +37,12 @@ jobs:
   # A real systemd host: install, run, upgrade, purge. Nodes started in CI
   # never dial the default seeds: they would join the real network.
   # The host runner persists, so clear what a failed run left behind.
+  # It runs jobs as root, and the release images are built on it, so not
+  # for code from forks, even approved: they get the distro containers.
+  # A fork's pull request could change this line, so look for that before
+  # approving one.
   systemd:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: host
     steps:
       - uses: actions/checkout@v7
@@ -112,7 +117,9 @@ jobs:
       - name: Installer smoke test
         run: sh scripts/ci/installer-smoke.sh ${{ matrix.init }} ${{ matrix.mode }}
 
+  # On the host runner, like `systemd`, and not for forks either.
   docker:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: host
     steps:
       - uses: actions/checkout@v7
