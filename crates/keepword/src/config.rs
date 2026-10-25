@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use keepword_capture::HttpConfig;
+use keepword_core::net::AlertKind;
 use keepword_core::{Keypair, Vantage};
 use keepword_normalize::SiteRules;
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,8 @@ pub struct Config {
     pub quorum: QuorumConfig,
     #[serde(default)]
     pub anchor: AnchorConfig,
+    #[serde(default)]
+    pub notify: NotifyConfig,
     /// Per-site normalization rules.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<SiteRules>,
@@ -255,6 +258,77 @@ impl Default for AnchorConfig {
     }
 }
 
+/// Where alerts are sent, so nobody has to open the web UI to see them
+/// (see `notify`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct NotifyConfig {
+    /// Alerts this node raised, or also those other witnesses raised.
+    pub from: NotifyFrom,
+    pub kinds: Vec<AlertKind>,
+    /// Where this node's web UI is reached, to link alerts to it.
+    pub ui_url: Option<String>,
+    pub targets: Vec<NotifyTarget>,
+}
+
+impl Default for NotifyConfig {
+    fn default() -> Self {
+        NotifyConfig {
+            from: NotifyFrom::ThisNode,
+            kinds: vec![
+                AlertKind::SilentEdit,
+                AlertKind::Split,
+                AlertKind::Equivocation,
+            ],
+            ui_url: None,
+            targets: vec![],
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NotifyFrom {
+    ThisNode,
+    /// Every witness this node hears from: on two nodes that know each
+    /// other, each alert twice.
+    Network,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotifyTarget {
+    pub kind: TargetKind,
+    /// An ntfy topic's URL, or a Discord, Slack or other webhook. Whoever
+    /// has it can post there, or read an ntfy topic.
+    pub url: String,
+    /// Sent as `Authorization: Bearer`, for an ntfy server with access
+    /// control or a webhook that asks for one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TargetKind {
+    Ntfy,
+    Discord,
+    Slack,
+    /// The alerts as JSON, for anything else.
+    Webhook,
+}
+
+impl TargetKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            TargetKind::Ntfy => "ntfy",
+            TargetKind::Discord => "Discord",
+            TargetKind::Slack => "Slack",
+            TargetKind::Webhook => "Webhook",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VantageConfig {
@@ -369,6 +443,7 @@ impl Config {
             ),
             ("beacon.drand_url", self.beacon.drand()),
             ("anchor.esplora_url", self.anchor.esplora()),
+            ("notify.ui_url", self.notify.ui_url.as_deref()),
         ] {
             if let Some(u) = url {
                 let ok =
@@ -376,6 +451,23 @@ impl Config {
                 if !ok {
                     bail!("{name} must be an http(s) URL, got {u:?}");
                 }
+            }
+        }
+        for t in &self.notify.targets {
+            // Not quoted back: whoever has the URL can post there.
+            let Some(u) = url::Url::parse(&t.url)
+                .ok()
+                .filter(|u| u.scheme() == "http" || u.scheme() == "https")
+            else {
+                bail!(
+                    "the {} notification target needs an http(s) URL",
+                    t.kind.label()
+                );
+            };
+            if t.kind == TargetKind::Ntfy
+                && u.path_segments().and_then(|mut s| s.next_back()) == Some("")
+            {
+                bail!("an ntfy URL ends in the topic, like https://ntfy.sh/my-alerts");
             }
         }
         if self.network.endpoint.is_some() && self.network.relay.is_some() {
@@ -474,11 +566,12 @@ impl Config {
 }
 
 /// Write the configuration whole or not at all: a node can't start with
-/// half of one.
+/// half of one. Only its owner may read it, for the notification URLs.
 fn write_config(dir: &Path, text: &str) -> Result<()> {
     let path = dir.join(CONFIG_FILE);
     let tmp = path.with_extension("toml.tmp");
-    fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+    let _ = fs::remove_file(&tmp);
+    write_private(&tmp, text.as_bytes()).with_context(|| format!("writing {}", tmp.display()))?;
     fs::rename(&tmp, &path)?;
     Ok(())
 }
@@ -555,6 +648,7 @@ mod tests {
         let cfg: Config = toml::from_str(text).unwrap();
         assert_eq!(cfg.vantage.asn, Some(3320));
         assert_eq!(cfg.rules.len(), 1);
+        assert_eq!(cfg.notify.targets[0].kind, TargetKind::Ntfy);
         assert!(cfg.beacon.drand().is_some());
         let off: Config = toml::from_str("[beacon]\ndrand_url = \"\"\n").unwrap();
         assert!(off.beacon.drand().is_none());

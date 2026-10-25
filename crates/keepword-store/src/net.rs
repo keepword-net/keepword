@@ -921,6 +921,32 @@ impl Store {
         rows.map(|j| json(&j?)).collect()
     }
 
+    /// Alerts stored after the one numbered `after`, in the order they came
+    /// in, with their numbers. A witness's alert may come in days after it
+    /// was raised, so this goes by when it was stored.
+    pub fn alerts_after(&self, after: i64, limit: u32) -> Result<Vec<(i64, Signed<Alert>)>> {
+        let db = self.db();
+        let mut st =
+            db.prepare("SELECT rowid, json FROM alerts WHERE rowid > ?1 ORDER BY rowid LIMIT ?2")?;
+        let rows = st.query_map(params![after, limit], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })?;
+        rows.map(|row| {
+            let (n, j) = row?;
+            Ok((n, json(&j)?))
+        })
+        .collect()
+    }
+
+    /// The number of the last alert stored, 0 for none.
+    pub fn alerts_last(&self) -> Result<i64> {
+        Ok(self
+            .db()
+            .query_row("SELECT COALESCE(MAX(rowid), 0) FROM alerts", [], |r| {
+                r.get(0)
+            })?)
+    }
+
     /// Whether `issuer` already raised an alert of `kind` for `url` since
     /// `since_ms`.
     pub fn alert_exists(

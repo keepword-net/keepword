@@ -86,6 +86,7 @@ anchor.
 | `requests [--mine]` | Active network watch requests |
 | `verdict URL` | What independent witnesses agree the URL served |
 | `alerts [--limit 50]` | Split, silent-edit and equivocation alerts |
+| `notify list\|test [N]` | Where alerts are sent and how sending goes; send a test notice |
 | `anchor submit\|upgrade\|list\|export` | Bitcoin anchoring via OpenTimestamps |
 | `beacon [ROUND]` | Fetch and verify a drand beacon |
 | `config show\|get\|set\|unset` | Read or change `keepword.toml`, with validation |
@@ -112,6 +113,38 @@ The important settings:
   to.
 - `capture.use_system_proxy`: off by default. A proxy changes your vantage
   point, and a TLS-intercepting one hides the server's certificate.
+
+## Notifications
+
+`keepword serve` sends alerts where you'll see them, so you don't have
+to open the web UI to find out: an [ntfy](https://ntfy.sh) topic for
+your phone, a Discord or Slack channel's webhook, or any webhook, which
+gets the signed alerts as JSON. Add them under Settings → Notifications,
+where "Send test" tries one, or in `keepword.toml`:
+
+```toml
+[notify]
+[[notify.targets]]
+kind = "ntfy"
+url = "https://ntfy.sh/YOUR-LONG-RANDOM-TOPIC"
+```
+
+For ntfy, install its app and subscribe to the same topic. Anyone who
+knows a topic on ntfy.sh can read it, so pick a long, random one. To see
+that a target works, run `keepword notify test`.
+
+- By default only the alerts this node raised are sent. `from =
+  "network"` sends those other witnesses raised too. If you run two
+  nodes that know each other, you'll get each alert twice.
+- The same alert raised again within a day, as one capture after another
+  does, isn't sent again. More than five at once go out as one message.
+- A target that fails is tried again, after longer and longer waits up
+  to half an hour, and gets what it missed. A message it still can't
+  take after a day is skipped. `keepword notify list` and Settings
+  show how sending goes.
+- `ui_url`, where you reach the web UI, makes the messages link to the
+  page in it. Without it, they link to the page itself.
+- Targets take effect when Keepword restarts, like other settings.
 
 ## Running in a network
 

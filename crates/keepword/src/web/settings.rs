@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
+use keepword_core::net::AlertKind;
 use maud::{Markup, html};
 
 use super::auth::{
@@ -13,7 +14,10 @@ use super::auth::{
 };
 use super::view::{self, Ctx, Nav};
 use super::{RESTART, Ui, WebResult};
-use crate::config::{CONFIG_FILE, Config, Retain};
+use crate::config::{
+    CONFIG_FILE, Config, NotifyConfig, NotifyFrom, NotifyTarget, Retain, TargetKind,
+};
+use crate::notify;
 
 /// A setting the container sets from this variable on every start, so a
 /// change here wouldn't last.
@@ -169,6 +173,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                 }
                 div.actions { button.btn.primary type="submit" { "Save settings" } }
             }
+            (notify_section(&ui, &saved))
             section.card #password {
                 h2 { "Password" }
                 (password_section(&ui))
@@ -187,6 +192,115 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         }
     };
     Ok(view::page(&ui, &ctx, Nav::Settings, "Settings", body))
+}
+
+/// A target's address, mostly hidden: whoever has it can post there.
+fn masked(url: &str) -> String {
+    let Ok(u) = url::Url::parse(url) else {
+        return "…".into();
+    };
+    let path: String = u.path().chars().take(4).collect();
+    format!("{}{path}…", u.host_str().unwrap_or_default())
+}
+
+fn notify_section(ui: &Ui, saved: &Config) -> Markup {
+    let cfg = &saved.notify;
+    let state = notify::State::load(&ui.node.dir);
+    let running = &ui.node.config.notify.targets;
+    let kind_box = |kind: AlertKind, name: &str, label: &str| {
+        html! {
+            label.check { input type="checkbox" name=(name) checked[cfg.kinds.contains(&kind)]; (label) }
+        }
+    };
+    let from = |value: NotifyFrom, key: &str, label: &str, help: &str| {
+        html! {
+            label.choice {
+                input type="radio" name="from" value=(key) checked[cfg.from == value];
+                span { b { (label) } br; span.muted.small { (help) } }
+            }
+        }
+    };
+    html! {
+        section.card.settings #notify {
+            h2 { "Notifications" }
+            p.muted.small {
+                "Get alerts on your phone or in a chat channel, without opening this page. "
+                "For your phone, install the ntfy app, subscribe to a topic name only you know, "
+                "and add " code { "https://ntfy.sh/" i { "that-name" } } " here."
+            }
+            @if cfg.targets.is_empty() {
+                p.small { "Alerts aren't sent anywhere yet." }
+            } @else {
+                ul.list {
+                    @for t in &cfg.targets {
+                        @let id = notify::target_id(t);
+                        @let st = state.targets.get(&id);
+                        li.row {
+                            div.grow {
+                                b { (t.kind.label()) } " " span.mono { (masked(&t.url)) }
+                                div.sub {
+                                    @if !running.contains(t) {
+                                        "Sends alerts once Keepword restarts."
+                                    } @else if let Some(f) = st.and_then(|s| s.failing.as_ref()) {
+                                        "Failing since " (view::when(f.since_ms)) ": " (f.error)
+                                    } @else if let Some(at) = st.and_then(|s| s.last_sent_ms) {
+                                        "Last sent " (view::when(at))
+                                    } @else {
+                                        "Nothing sent yet."
+                                    }
+                                }
+                            }
+                            (view::button(ui, "/settings/notify/test", &[("id", &id)], "Send test", "ghost small", None))
+                            (view::button(ui, "/settings/notify/remove", &[("id", &id)], "Remove", "ghost small",
+                                Some("Stop sending alerts there?")))
+                        }
+                    }
+                }
+            }
+            form.stack method="post" action="/settings/notify/add" {
+                (view::csrf(ui))
+                div.row-fields {
+                    label { "Send to"
+                        select name="kind" {
+                            option value="ntfy" { "ntfy (phone)" }
+                            option value="discord" { "Discord webhook" }
+                            option value="slack" { "Slack webhook" }
+                            option value="webhook" { "Other webhook (JSON)" }
+                        }
+                    }
+                    label { "Address"
+                        input type="url" name="url" required placeholder="https://ntfy.sh/your-topic" autocomplete="off";
+                    }
+                }
+                details {
+                    summary { "Access token" }
+                    label { "Only if the server asks for one"
+                        input type="password" name="token" autocomplete="off";
+                    }
+                }
+                div { button.btn type="submit" { "Add" } }
+            }
+            details {
+                summary { "Which alerts" }
+                form.stack method="post" action="/settings/notify" {
+                    (view::csrf(ui))
+                    div.choices {
+                        (from(NotifyFrom::ThisNode, "this-node", "Raised by this node",
+                            "What this node saw itself."))
+                        (from(NotifyFrom::Network, "network", "Also those other witnesses raised",
+                            "Every alert this node hears of. Two of your nodes that know each other each send them."))
+                    }
+                    (kind_box(AlertKind::SilentEdit, "silent_edit", "Silent edits"))
+                    (kind_box(AlertKind::Split, "split", "Different versions"))
+                    (kind_box(AlertKind::Equivocation, "equivocation", "Log equivocations"))
+                    label { "This web UI's address, to link alerts to it (optional)"
+                        input type="url" name="ui_url" value=[cfg.ui_url.as_deref()] placeholder="https://keepword.example.org" autocomplete="off";
+                    }
+                    div { button.btn type="submit" { "Save" } }
+                }
+            }
+        }
+    }
 }
 
 /// All of `keepword.toml`, to edit as text.
@@ -335,6 +449,85 @@ pub(super) async fn save_file(State(ui): State<Ui>, form: Post) -> WebResult<Res
     Ok(match Config::save_text(&ui.node.dir, &text) {
         Ok(()) => flash("/settings", "ok", "Saved."),
         Err(e) => flash("/settings#file", "error", format!("Not saved: {e:#}")),
+    })
+}
+
+const NOTIFY: &str = "/settings#notify";
+
+/// Change the saved notification settings, if they come out valid.
+fn change_notify(ui: &Ui, ok: &str, f: impl FnOnce(&mut NotifyConfig)) -> WebResult<Response> {
+    let dir = &ui.node.dir;
+    let mut cfg = Config::load(dir)?;
+    f(&mut cfg.notify);
+    if let Err(e) = cfg.validate() {
+        return Ok(flash(NOTIFY, "error", format!("Not saved: {e:#}")));
+    }
+    cfg.save(dir)?;
+    Ok(flash(NOTIFY, "ok", ok))
+}
+
+pub(super) async fn notify_save(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
+    change_notify(&ui, "Saved.", |n| {
+        n.from = match form.get("from") {
+            "network" => NotifyFrom::Network,
+            _ => NotifyFrom::ThisNode,
+        };
+        n.kinds = [
+            (AlertKind::SilentEdit, "silent_edit"),
+            (AlertKind::Split, "split"),
+            (AlertKind::Equivocation, "equivocation"),
+        ]
+        .into_iter()
+        .filter(|(_, name)| form.on(name))
+        .map(|(k, _)| k)
+        .collect();
+        let u = form.get("ui_url");
+        n.ui_url = (!u.is_empty()).then(|| u.to_string());
+    })
+}
+
+pub(super) async fn notify_add(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
+    let kind = match form.get("kind") {
+        "discord" => TargetKind::Discord,
+        "slack" => TargetKind::Slack,
+        "webhook" => TargetKind::Webhook,
+        _ => TargetKind::Ntfy,
+    };
+    let token = form.get("token");
+    let target = NotifyTarget {
+        kind,
+        url: form.get("url").to_string(),
+        token: (!token.is_empty()).then(|| token.to_string()),
+    };
+    change_notify(&ui, "Added. Send a test to see that it arrives.", |n| {
+        if !n.targets.contains(&target) {
+            n.targets.push(target);
+        }
+    })
+}
+
+pub(super) async fn notify_remove(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
+    let id = form.get("id");
+    change_notify(&ui, "Removed.", |n| {
+        n.targets.retain(|t| notify::target_id(t) != id)
+    })
+}
+
+pub(super) async fn notify_test(State(ui): State<Ui>, form: Post) -> WebResult<Response> {
+    // As saved, so a target can be tried before a restart.
+    let cfg = Config::load(&ui.node.dir)?;
+    let Some(t) = cfg
+        .notify
+        .targets
+        .iter()
+        .find(|t| notify::target_id(t) == form.get("id"))
+    else {
+        return Ok(flash(NOTIFY, "error", "That target is gone."));
+    };
+    let sent = notify::send(&notify::client(&cfg)?, t, &notify::test_notice(&cfg.notify)).await;
+    Ok(match sent {
+        Ok(()) => flash(NOTIFY, "ok", format!("Sent to {}.", notify::target_name(t))),
+        Err(e) => flash(NOTIFY, "error", format!("Not sent: {e:#}")),
     })
 }
 

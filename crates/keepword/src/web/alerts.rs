@@ -70,6 +70,9 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         } @else {
             ul.list { @for e in entries { (e) } }
         }
+        @if node.config.notify.targets.is_empty() {
+            p.muted.small { "Get alerts on your phone or in a chat channel: " a href="/settings#notify" { "set up notifications" } "." }
+        }
     };
     Ok(view::page(&ui, &ctx, Nav::Alerts, "Alerts", body))
 }

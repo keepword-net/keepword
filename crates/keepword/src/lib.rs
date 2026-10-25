@@ -9,6 +9,7 @@ pub mod consensus;
 pub mod daemon;
 pub mod federation;
 pub mod httpc;
+pub mod notify;
 pub mod recheck;
 pub mod relay;
 pub mod sysdir;
