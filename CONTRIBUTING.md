@@ -27,7 +27,7 @@ Not all of it is code:
   `crates/keepword-normalize/tests/corpus/` are hand-built. Real pages,
   with the noise that changes between two requests to them, are the most
   valuable thing the normalizer can get (see
-  [DESIGN.md §4](docs/DESIGN.md#4-normalization-v4-implemented)).
+  [DESIGN.md §4](docs/DESIGN.md#4-normalization-v6-implemented)).
 - **Teach the normalizer your language.** Relative times ("vor 3
   Stunden") and update notices ("aktualisiert", "mise à jour") are matched
   per language. If yours is missing, add it with a test. A new relative

@@ -160,13 +160,14 @@ Every check says exactly what it proves, and what it doesn't.
 <summary><b>Questions people ask</b></summary>
 
 **Do I need to be technical?**
-Today, running a witness takes a Linux server and a terminal, but setup is
+Today, running a witness takes a Linux machine and a terminal, but setup is
 a single command. Checking a proof takes the `keepword` program. A simpler
 way for everyone is on the roadmap.
 
 **What does it cost?**
-The software is free and open source (AGPL-3.0). A witness runs happily on a small cloud server that
-costs a few euros a month.
+The software is free and open source (AGPL-3.0). A witness runs happily
+on a small cloud server that costs a few euros a month, or on a machine at
+home, and needs no domain.
 
 **Does it track people?**
 No. Witnesses only fetch public pages that someone asked them to watch.

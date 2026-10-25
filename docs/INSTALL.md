@@ -32,8 +32,9 @@ curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/in
 
 Release binaries don't include headless rendering or the TLSNotary tier, so
 `--render` and `--notary` need a build. Piped without `--binary`, the
-installer clones the source and builds it. `--ref vX.Y.Z` picks a release
-other than the latest.
+installer clones the source and builds `main`, which can be ahead of the
+latest release; add `--ref vX.Y.Z` to build a release. With `--binary`,
+`--ref vX.Y.Z` picks a release other than the latest.
 
 The installer:
 
