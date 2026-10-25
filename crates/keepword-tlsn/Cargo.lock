@@ -1938,7 +1938,7 @@ dependencies = [
 
 [[package]]
 name = "keepword"
-version = "2.5.0-beta.3"
+version = "2.5.0-beta.4"
 dependencies = [
  "anyhow",
  "argon2",
@@ -1968,7 +1968,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-capture"
-version = "2.5.0-beta.3"
+version = "2.5.0-beta.4"
 dependencies = [
  "keepword-core",
  "reqwest",
@@ -1981,7 +1981,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-core"
-version = "2.5.0-beta.3"
+version = "2.5.0-beta.4"
 dependencies = [
  "base64 0.23.1",
  "blake3",
@@ -2001,7 +2001,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-normalize"
-version = "2.5.0-beta.3"
+version = "2.5.0-beta.4"
 dependencies = [
  "ego-tree",
  "encoding_rs",
@@ -2021,7 +2021,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-store"
-version = "2.5.0-beta.3"
+version = "2.5.0-beta.4"
 dependencies = [
  "keepword-core",
  "rusqlite",
@@ -2032,7 +2032,7 @@ dependencies = [
 
 [[package]]
 name = "keepword-tlsn"
-version = "2.5.0-beta.3"
+version = "2.5.0-beta.4"
 dependencies = [
  "anyhow",
  "clap",
