@@ -3,6 +3,8 @@
 Everything is in Rust. Bug reports, ideas and changes go to the main
 repository on [git.keepword.net](https://git.keepword.net/keepword/keepword);
 [CONTRIBUTING.md](../CONTRIBUTING.md) says how to send them. The design, threat model and formats are in [DESIGN.md](DESIGN.md).
+Questions about the code, and changes you'd like to talk over first, go to
+[#dev:keepword.net](https://matrix.to/#/#dev:keepword.net) on Matrix.
 
 ## Layout
 

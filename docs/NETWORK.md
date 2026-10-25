@@ -263,6 +263,11 @@ network.
   full copy of a witness's log. Keep the key. Peers retry it every ten minutes, stop
   assigning it requests after a week, and drop it first when their peer
   table fills up. `keepword net remove-peer KEY` drops it at once.
+- **Keeping up:** releases and news about the Keepword network are posted
+  in [#announcements:keepword.net](https://matrix.to/#/#announcements:keepword.net),
+  and its operators talk in
+  [#operators:keepword.net](https://matrix.to/#/#operators:keepword.net),
+  both on Matrix.
 
 ## 8. Moving on from a test cluster
 
@@ -305,3 +310,7 @@ Then set its public endpoint and peers, remove the old LAN peers with
 | Peers get `HTTP 429` | They hit `network.api_requests_per_minute`. Raise it, or check that a proxy in front passes real addresses (`trust_forwarded_for`). |
 | Messages rejected, heads look wrong | Clock skew: check `timedatectl`. |
 | A bundle has no cosignatures | The capture is newer than the log's last checkpoint. Checkpoints are hourly; auditors cosign within the following hour. |
+
+Something else? Ask in
+[#operators:keepword.net](https://matrix.to/#/#operators:keepword.net),
+with the output of `keepword net status`.

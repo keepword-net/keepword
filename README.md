@@ -19,7 +19,8 @@
   <a href="https://keepword.net/network/"><b>Run a witness</b></a> ·
   <a href="https://keepword.net/install/">Install</a> ·
   <a href="https://keepword.net/docs/design/">How it works</a> ·
-  <a href="https://keepword.net/docs/">Docs</a>
+  <a href="https://keepword.net/docs/">Docs</a> ·
+  <a href="https://matrix.to/#/#keepword:keepword.net">Chat</a>
 </p>
 
 ---
@@ -139,6 +140,18 @@ Every check says exactly what it proves, and what it doesn't.
   [Starting a network](https://keepword.net/docs/network/)).
 - 🔍 **Watch a page that matters to you.** Install a node and ask the
   network to keep an eye on it.
+- 💬 **Come and talk.** Keepword's chat is on Matrix:
+  [#keepword:keepword.net](https://matrix.to/#/#keepword:keepword.net)
+  for questions and ideas,
+  [#operators:keepword.net](https://matrix.to/#/#operators:keepword.net)
+  for running a witness,
+  [#dev:keepword.net](https://matrix.to/#/#dev:keepword.net) for the
+  code, and
+  [#announcements:keepword.net](https://matrix.to/#/#announcements:keepword.net)
+  for releases and network news. The
+  [Keepword space](https://matrix.to/#/#keepword-space:keepword.net) has
+  them all. keepword.net doesn't take sign-ups, so join with an account on
+  any other Matrix server, such as matrix.org.
 - 🛠️ **Build with us.** Everything is in Rust, tested end to end, and
   documented at [keepword.net/docs](https://keepword.net/docs/). Start with
   [CONTRIBUTING.md](https://git.keepword.net/keepword/keepword/src/branch/main/CONTRIBUTING.md).

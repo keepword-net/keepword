@@ -6,7 +6,9 @@ software, so thank you for looking.
 
 ## Reporting a vulnerability
 
-Please **don't** open a public issue. Email **security@keepword.net**
+Please **don't** open a public issue or post it in the Matrix rooms. Email
+**security@keepword.net**, or send an encrypted direct message on Matrix
+to [@aelthorim:keepword.net](https://matrix.to/#/@aelthorim:keepword.net),
 with:
 
 - what you found and what an attacker gets from it,
@@ -48,7 +50,7 @@ In particular, anything that lets someone:
 - **run code or read files** through the web UI, the peer API, the
   installer or the container image.
 
-When in doubt, email.
+When in doubt, get in touch.
 
 ## What doesn't
 

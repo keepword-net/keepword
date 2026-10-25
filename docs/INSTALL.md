@@ -9,6 +9,10 @@ There are two supported ways to run a node in production:
 - **The container image** (`git.keepword.net/keepword/keepword`) is for
   Docker, Podman, NAS boxes and Kubernetes.
 
+Stuck, or not sure which options fit? Ask in
+[#operators:keepword.net](https://matrix.to/#/#operators:keepword.net) on
+Matrix.
+
 ## Installer
 
 ```sh

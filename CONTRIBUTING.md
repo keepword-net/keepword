@@ -7,6 +7,13 @@ hostile page or peer does.
 The project lives at [git.keepword.net/keepword/keepword](https://git.keepword.net/keepword/keepword).
 Registration there is open: sign up, fork, and open a pull request.
 
+To talk a change over, or to ask anything about the code, come to
+[#dev:keepword.net](https://matrix.to/#/#dev:keepword.net) on Matrix.
+Everything else goes to
+[#keepword:keepword.net](https://matrix.to/#/#keepword:keepword.net).
+The Matrix server at keepword.net doesn't take sign-ups, so join with an
+account on any other server, such as matrix.org.
+
 ## Ways to help
 
 Not all of it is code:
@@ -14,7 +21,8 @@ Not all of it is code:
 - **Run a witness.** A witness in a new country or network is worth more
   than one more in a place we already cover. See
   [keepword.net/network](https://keepword.net/network/) or
-  [docs/NETWORK.md](docs/NETWORK.md).
+  [docs/NETWORK.md](docs/NETWORK.md). Operators help each other in
+  [#operators:keepword.net](https://matrix.to/#/#operators:keepword.net).
 - **Grow the regression corpus.** The pages in
   `crates/keepword-normalize/tests/corpus/` are hand-built. Real pages,
   with the noise that changes between two requests to them, are the most
@@ -185,9 +193,12 @@ Open an [issue](https://git.keepword.net/keepword/keepword/issues) with:
 
 ## Security vulnerabilities
 
-Please **don't** open a public issue for a vulnerability. Email
-**security@keepword.net** instead. [SECURITY.md](SECURITY.md) says what to
-include, what counts and how fixes are released.
+Please **don't** open a public issue for a vulnerability, or bring it up in
+the Matrix rooms. Email **security@keepword.net**, or send an encrypted
+direct message on Matrix to
+[@aelthorim:keepword.net](https://matrix.to/#/@aelthorim:keepword.net),
+instead. [SECURITY.md](SECURITY.md) says what to include, what counts and
+how fixes are released.
 
 ## AI-assisted contributions
 
