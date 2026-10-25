@@ -230,11 +230,16 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
                         thead { tr { th { "Witness" } th { "Where" } th { "Reputation" } th { "Last worked" } th { "State" } th {} } }
                         tbody {
                             @for p in &peers {
-                                @let host = p.endpoint.as_deref().and_then(|e| url::Url::parse(e).ok()?.host_str().map(str::to_string));
+                                @let host = p.endpoint.as_deref().and_then(crate::relay::endpoint_host);
                                 tr {
                                     td {
                                         span.mono { (p.key.short()) }
-                                        @if let Some(h) = &host { div.sub { (h) } }
+                                        @if let Some((h, relayed)) = &host {
+                                            div.sub {
+                                                @if *relayed { span title="Behind a router; this witness relays for it." { "through " (h) } }
+                                                @else { (h) }
+                                            }
+                                        }
                                     }
                                     td { @match node.location_of(&p.key, now)? { Some(l) => { (l.to_string()) } None => { span.muted { "unknown" } } } }
                                     td { (format!("{:.1}", scores.get(&p.key).copied().unwrap_or(0.0))) }

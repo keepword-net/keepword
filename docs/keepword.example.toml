@@ -88,6 +88,18 @@ calendars = [
 esplora_url = "https://blockstream.info/api"   # "" to disable
 interval_secs = 3600
 
+# Send alerts to your phone or a chat channel; see docs/USAGE.md.
+[notify]
+from = "this-node"   # or "network": also the alerts other witnesses raised
+kinds = ["silent_edit", "split", "equivocation"]
+# ui_url = "https://keepword.example.org"   # link alerts to this web UI
+# Whoever has a target's URL can post there, or read an ntfy topic.
+# Keepword writes this file readable by its owner only.
+[[notify.targets]]
+kind = "ntfy"        # ntfy, discord, slack or webhook
+url = "https://ntfy.example.org/pick-a-long-random-topic"
+# token = "tk_..."   # for an ntfy server with access control
+
 # Per-site normalization rules. They apply to the host and its subdomains,
 # and are committed to in every attestation's normalizer profile.
 [[rules]]

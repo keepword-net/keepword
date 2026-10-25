@@ -30,11 +30,12 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
         let from = if a.issuer == me {
             "this node".to_string()
         } else {
-            node.store
-                .peer(&a.issuer)?
-                .and_then(|p| p.endpoint)
-                .and_then(|e| Some(url::Url::parse(&e).ok()?.host_str()?.to_string()))
-                .unwrap_or_else(|| format!("witness {}", a.issuer.short()))
+            let ep = node.store.peer(&a.issuer)?.and_then(|p| p.endpoint);
+            match ep.as_deref().and_then(crate::relay::endpoint_host) {
+                Some((h, false)) => h,
+                Some((h, true)) => format!("witness {} through {h}", a.issuer.short()),
+                None => format!("witness {}", a.issuer.short()),
+            }
         };
         let prefix = format!("{}: ", a.kind.label());
         let summary = a
@@ -68,6 +69,9 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             div.empty { p { "No alerts." } p.muted { "Alerts from this node and from the witnesses it knows show up here." } }
         } @else {
             ul.list { @for e in entries { (e) } }
+        }
+        @if node.config.notify.targets.is_empty() {
+            p.muted.small { "Get alerts on your phone or in a chat channel: " a href="/settings#notify" { "set up notifications" } "." }
         }
     };
     Ok(view::page(&ui, &ctx, Nav::Alerts, "Alerts", body))

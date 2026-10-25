@@ -175,6 +175,11 @@ enum Cmd {
         #[arg(long, default_value_t = 50)]
         limit: u32,
     },
+    /// Where alerts are sent (`[notify]` in keepword.toml).
+    Notify {
+        #[command(subcommand)]
+        cmd: NotifyCmd,
+    },
     /// Anchor the log in Bitcoin through OpenTimestamps.
     Anchor {
         #[command(subcommand)]
@@ -210,6 +215,14 @@ enum ConfigCmd {
     Set { key: String, value: String },
     /// Reset an optional setting to unset.
     Unset { key: String },
+}
+
+#[derive(Subcommand)]
+enum NotifyCmd {
+    /// List the targets alerts are sent to, and how sending goes.
+    List,
+    /// Send a test notice to every target, or to the Nth one.
+    Test { n: Option<usize> },
 }
 
 #[derive(Subcommand)]
@@ -823,6 +836,12 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     async move { keepword::daemon::anchor_loop(n, |l| eprintln!("{l}")).await },
                 );
             }
+            if !node.config.notify.targets.is_empty() {
+                let n = node.clone();
+                tasks.spawn(
+                    async move { keepword::notify::notify_loop(n, |l| eprintln!("{l}")).await },
+                );
+            }
             tokio::select! {
                 Some(r) = tasks.join_next() => r??,
                 _ = tokio::signal::ctrl_c() => eprintln!("stopping"),
@@ -1132,8 +1151,11 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
                     "this node".to_string()
                 } else {
                     let ep = node.store.peer(&a.issuer)?.and_then(|p| p.endpoint);
-                    ep.and_then(|e| Some(url::Url::parse(&e).ok()?.host_str()?.to_string()))
-                        .unwrap_or_else(|| a.issuer.short())
+                    match ep.as_deref().and_then(keepword::relay::endpoint_host) {
+                        Some((h, false)) => h,
+                        Some((h, true)) => format!("{} through {h}", a.issuer.short()),
+                        None => a.issuer.short(),
+                    }
                 };
                 println!(
                     "{}  {kind:<12}  {}  {}{repeats}  ({from})",
@@ -1144,6 +1166,60 @@ async fn run(cli: Cli, dir: PathBuf) -> Result<bool> {
             }
             if alerts.iter().any(|a| a.body.kind == AlertKind::SilentEdit) {
                 println!("\nSee the latest change to a page with: keepword diff URL");
+            }
+        }
+        Cmd::Notify { cmd } => {
+            use keepword::notify;
+            // As saved, so a target can be tried before a restart.
+            let cfg = Config::load(&dir)?;
+            let targets = &cfg.notify.targets;
+            if targets.is_empty() {
+                println!(
+                    "No notification targets. Add one under Settings in the web UI, or with:\n  \
+                     keepword config set notify.targets '[{{kind = \"ntfy\", url = \"https://ntfy.sh/YOUR-TOPIC\"}}]'"
+                );
+                return Ok(true);
+            }
+            match cmd {
+                NotifyCmd::List => {
+                    let state = notify::State::load(&dir);
+                    for (i, t) in targets.iter().enumerate() {
+                        let st = state.targets.get(&notify::target_id(t));
+                        let how = match st {
+                            None => "nothing sent yet".to_string(),
+                            Some(s) => match (&s.failing, s.last_sent_ms) {
+                                (Some(f), _) => {
+                                    format!("failing since {}: {}", minute(f.since_ms), f.error)
+                                }
+                                (None, Some(at)) => format!("last sent {}", minute(at)),
+                                (None, None) => "nothing sent yet".to_string(),
+                            },
+                        };
+                        println!("{}  {}  {how}", i + 1, notify::target_name(t));
+                    }
+                }
+                NotifyCmd::Test { n } => {
+                    let picked: Vec<_> = match n {
+                        None => targets.iter().collect(),
+                        Some(n) => match n.checked_sub(1).and_then(|i| targets.get(i)) {
+                            Some(t) => vec![t],
+                            None => bail!("there are {} targets", targets.len()),
+                        },
+                    };
+                    let http = notify::client(&cfg)?;
+                    let notice = notify::test_notice(&cfg.notify);
+                    let mut ok = true;
+                    for t in picked {
+                        match notify::send(&http, t, &notice).await {
+                            Ok(()) => println!("sent to {}", notify::target_name(t)),
+                            Err(e) => {
+                                ok = false;
+                                println!("{}: {e:#}", notify::target_name(t));
+                            }
+                        }
+                    }
+                    return Ok(ok);
+                }
             }
         }
         Cmd::Anchor { cmd } => {

@@ -9,6 +9,15 @@ only change incompatibly in a new major version.
 
 ### Added
 
+- **Alerts are sent to your phone or a chat channel**, so you don't have
+  to open the web UI to see them: an ntfy topic, a Discord or Slack
+  webhook, or any webhook, which gets the signed alerts as JSON. Set
+  them up under Settings → Notifications, which can send a test, or in
+  `[notify]` (`keepword notify list|test`). By default only this node's
+  own alerts are sent, `from = "network"` sends other witnesses' too. An
+  alert raised again within a day isn't sent again, and more than five
+  at once go out as one message. A target that is down gets what it
+  missed when it's back; `notify.state` keeps track, without the URLs.
 - **A web UI that runs a node without the CLI**, for people who won't
   open a terminal, as on Umbrel or TrueNAS. The overview lists the
   changes to review, each with the words that changed marked, says how
@@ -32,6 +41,9 @@ only change incompatibly in a new major version.
 
 ### Changed
 
+- **`keepword.toml` is written readable by its owner only**, since it
+  can now hold notification URLs, which let whoever has them post there.
+  A file already there changes when Keepword next saves it.
 - **Adding pages in the web UI asks the network to watch them too, by
   default**, on a node in the network. The form says their addresses go
   to every witness; an address with a secret in its query (`token`,
@@ -60,6 +72,10 @@ only change incompatibly in a new major version.
 
 ### Fixed
 
+- **A witness behind a relay looked like the relay.** The network page
+  and alerts named it by its address's host, which is the relay's, so
+  one at home relayed by seed1.keepword.net showed as seed1 with another
+  key, and its alerts as seed1's. It now shows "through" the relay.
 - **A site's menus, banners and footers raised silent-edit alerts.** On a
   page without `<main>`, like Criteo's and Cloudflare's policies, the
   whole body was compared, so a rotated story in the menu or a renamed

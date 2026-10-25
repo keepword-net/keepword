@@ -664,3 +664,87 @@ async fn a_watched_page_is_asked_for_as_long_as_it_is_watched() {
             && network.contains("goes to every witness")
     );
 }
+
+#[tokio::test]
+async fn notifications_are_added_tried_and_removed() {
+    let t = tempfile::tempdir().unwrap();
+    let n = node(t.path());
+    let app = ui(&n, UiAuth::LocalOnly);
+    let token = csrf(&get(&app, "/settings", "").await.body);
+    // A service that takes one request and keeps it.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let topic = format!("http://{}/my-secret-topic", listener.local_addr().unwrap());
+    let got = tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut req = Vec::new();
+        let mut buf = [0u8; 4096];
+        while !String::from_utf8_lossy(&req).contains("Keepword test") {
+            let k = sock.read(&mut buf).await.unwrap();
+            assert!(k > 0, "closed early");
+            req.extend_from_slice(&buf[..k]);
+        }
+        sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            .await
+            .unwrap();
+        String::from_utf8(req).unwrap()
+    });
+
+    let no_topic = format!("{}/", topic.rsplit_once('/').unwrap().0);
+    post(
+        &app,
+        "/settings/notify/add",
+        "",
+        &[("csrf", &token), ("kind", "ntfy"), ("url", &no_topic)],
+    )
+    .await;
+    assert!(Config::load(t.path()).unwrap().notify.targets.is_empty());
+    let added = post(
+        &app,
+        "/settings/notify/add",
+        "",
+        &[("csrf", &token), ("kind", "ntfy"), ("url", &topic)],
+    )
+    .await;
+    assert_eq!(added.location, "/settings#notify");
+    let c = Config::load(t.path()).unwrap();
+    assert_eq!(c.notify.targets.len(), 1);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(t.path().join("keepword.toml"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0, "others can read keepword.toml");
+    }
+    let page = get(&app, "/settings", "").await.body;
+    let shown = page.split("id=\"file\"").next().unwrap();
+    assert!(!shown.contains("my-secret-topic"), "the topic is shown");
+    assert!(shown.contains("once Keepword restarts"));
+
+    let id = keepword::notify::target_id(&c.notify.targets[0]);
+    let tried = post(
+        &app,
+        "/settings/notify/test",
+        "",
+        &[("csrf", &token), ("id", &id)],
+    )
+    .await;
+    assert!(
+        tried.cookies.iter().any(|c| c.contains("ok=")),
+        "{:?}",
+        tried.cookies
+    );
+    let req = got.await.unwrap();
+    assert!(req.starts_with("POST / "), "{req}");
+    assert!(req.contains("\"topic\":\"my-secret-topic\""), "{req}");
+
+    post(
+        &app,
+        "/settings/notify/remove",
+        "",
+        &[("csrf", &token), ("id", &id)],
+    )
+    .await;
+    assert!(Config::load(t.path()).unwrap().notify.targets.is_empty());
+}
