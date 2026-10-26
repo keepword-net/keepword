@@ -1,0 +1,44 @@
+# From the keepword Debian package: the service scripts/install.sh writes
+# elsewhere. Change it with a drop-in (systemctl edit keepword); the installer
+# keeps its own in keepword.service.d/installer.conf.
+[Unit]
+Description=Keepword node
+Documentation=https://git.keepword.net/keepword/keepword
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=keepword
+Group=keepword
+Environment=KEEPWORD_DIR=/var/lib/keepword
+Environment=HOME=/var/lib/keepword
+ExecStart=/usr/bin/keepword serve --addr 127.0.0.1:8480 --api-addr 127.0.0.1:8481 --watch --anchor
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/keepword
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

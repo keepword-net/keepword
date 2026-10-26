@@ -1,0 +1,14 @@
+#!/bin/sh
+# Even a purge keeps /var/lib/keepword: it holds the witness key, and a lost
+# key is a lost witness. The installer's --uninstall --purge deletes it.
+set -e
+
+case "$1" in
+    remove|purge)
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+        fi ;;
+esac
+if [ "$1" = purge ] && [ -d /var/lib/keepword ]; then
+    echo "keepword: kept /var/lib/keepword, the witness key and log, and the keepword user" >&2
+fi

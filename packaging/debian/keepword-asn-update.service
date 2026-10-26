@@ -1,0 +1,36 @@
+# From the keepword Debian package: the service scripts/install.sh writes
+# elsewhere.
+[Unit]
+Description=Refresh the Keepword IP-to-ASN table
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=keepword
+Group=keepword
+ExecStart=/usr/lib/keepword/update-asn-db /var/lib/keepword
+# The node loads the table at start-up.
+ExecStartPost=+/bin/systemctl try-restart keepword.service
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/keepword
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+UMask=0027

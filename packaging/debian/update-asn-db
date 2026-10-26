@@ -1,0 +1,12 @@
+#!/bin/sh
+# Refresh the IP-to-ASN table (iptoasn.com, public domain data).
+set -eu
+dir=${1:-/var/lib/keepword}
+tmp=$(mktemp "$dir/.ip2asn.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+curl -fsSL --retry 3 "https://iptoasn.com/data/ip2asn-combined.tsv.gz" | gzip -dc >"$tmp"
+# Sanity check: a real table has hundreds of thousands of ranges.
+[ "$(wc -l <"$tmp")" -gt 100000 ] || { echo "downloaded ASN table looks truncated" >&2; exit 1; }
+chmod 0640 "$tmp"
+mv -f "$tmp" "$dir/ip2asn-combined.tsv"
+trap - EXIT

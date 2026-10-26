@@ -1,12 +1,14 @@
 name: Release
 
-# Push a tag like v1.0.0 to build static Linux binaries, publish a Forgejo
-# release with them, their checksums and the changelog entry, then publish
-# the crates to crates.io. A pre-release tag, like v2.5.0-rc.1, publishes a
-# Forgejo pre-release from the changelog's Unreleased section and its own
-# image tag only: the installer, the 2 and latest images and crates.io stay
-# on the latest release. Run by hand, it only builds: to try a change to the
-# runner image without releasing.
+# Push a tag like v1.0.0 to build static Linux binaries and Debian packages
+# of them, publish a Forgejo release with them, their checksums and the
+# changelog entry, put the packages in this Forgejo's apt repository, then
+# publish the crates to crates.io. A pre-release tag, like v2.5.0-rc.1,
+# publishes a Forgejo pre-release from the changelog's Unreleased section,
+# its own image tag and its packages in the apt repository's beta suite
+# only: the installer, the stable suite, the 2 and latest images and
+# crates.io stay on the latest release. Run by hand, it only builds: to try
+# a change to the runner image without releasing.
 on:
   push:
     tags: ["v*"]
@@ -47,10 +49,17 @@ jobs:
           cp target/${{ matrix.target }}/release/keepword "dist/$name/"
           cp LICENSE README.md CHANGELOG.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
+      - name: Debian package
+        run: |
+          version=$(cargo pkgid -p keepword | sed 's/.*[#@]//')
+          case ${{ matrix.target }} in x86_64-*) arch=amd64 ;; aarch64-*) arch=arm64 ;; esac
+          sh packaging/debian/build-deb.sh target/${{ matrix.target }}/release/keepword "$version" "$arch" dist
       - uses: forgejo/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
 
   release:
     needs: build
@@ -64,7 +73,7 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Checksums
-        run: cd dist && sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS
+        run: cd dist && sha256sum *.tar.gz *.deb > SHA256SUMS && cat SHA256SUMS
       - name: Release notes from the changelog
         run: |
           version=${GITHUB_REF_NAME#v}
@@ -89,8 +98,11 @@ jobs:
           ```
 
           Drop `--binary` to build from source. The binaries below are static
-          Linux builds of the `keepword` command (without headless rendering).
-          Check them against `SHA256SUMS`.
+          Linux builds of the `keepword` command (without headless rendering),
+          and the `.deb` packages hold them with the node's services. On
+          Debian and Ubuntu the installer installs the package from Keepword's
+          apt repository, so `apt upgrade` keeps the node current. Check them
+          against `SHA256SUMS`.
           EOF
           printf '\nThe container image holds the same binary, for both: `%s`.\n' \
             "${GITHUB_SERVER_URL#*://}/$GITHUB_REPOSITORY:$version" >> notes.md
@@ -110,9 +122,27 @@ jobs:
             curl -fsS -X POST -H "Authorization: token $TOKEN" \
               -H "Content-Type: application/json" --data @- "$API/releases" |
             jq -r .id)
-          for f in dist/*.tar.gz dist/SHA256SUMS; do
+          for f in dist/*.tar.gz dist/*.deb dist/SHA256SUMS; do
             curl -fsS -X POST -H "Authorization: token $TOKEN" \
               -F "attachment=@$f" "$API/releases/$id/assets?name=$(basename "$f")" >/dev/null
+          done
+      # Into this Forgejo's apt repository, which the installer installs
+      # from on Debian and Ubuntu. The stable suite gets releases; beta gets
+      # them and pre-releases, so a node testing one moves on to the release
+      # after it. With the image's REGISTRY_USER and REGISTRY_TOKEN, as the
+      # repository is a package registry too.
+      - name: Publish the Debian packages
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          : "${REGISTRY_USER:?set the REGISTRY_USER secret}" "${REGISTRY_TOKEN:?set the REGISTRY_TOKEN secret}"
+          case $GITHUB_REF_NAME in *-*) suites=beta ;; *) suites="stable beta" ;; esac
+          for suite in $suites; do
+            for f in dist/*.deb; do
+              curl -fsS --user "$REGISTRY_USER:$REGISTRY_TOKEN" --upload-file "$f" \
+                "$GITHUB_SERVER_URL/api/packages/${GITHUB_REPOSITORY%%/*}/debian/pool/$suite/main/upload"
+            done
           done
 
   # The container image for both targets, around the binaries above. On a

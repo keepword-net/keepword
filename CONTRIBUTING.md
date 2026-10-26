@@ -112,7 +112,9 @@ cargo test --release
 If you touched `scripts/` or `packaging/`:
 
 ```sh
-shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh
+shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh \
+    packaging/debian/build-deb.sh packaging/debian/postinst packaging/debian/prerm \
+    packaging/debian/postrm packaging/debian/update-asn-db
 ```
 
 CI also installs the node on several distributions and in a container.
