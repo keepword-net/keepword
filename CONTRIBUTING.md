@@ -54,8 +54,10 @@ touches.
 ## Setting up
 
 You need Rust 1.95 or newer (`rustup` or your distribution's package).
+`rust-toolchain.toml` pins the version CI uses, and rustup installs it for
+you in the checkout, so clippy and rustfmt give the same results as in CI.
 With Nix, `nix develop` (or direnv, using the `.envrc`) gives you a shell
-with the toolchain, clippy and rustfmt.
+with that toolchain, clippy and rustfmt.
 
 ```sh
 git clone https://git.keepword.net/<you>/keepword.git && cd keepword

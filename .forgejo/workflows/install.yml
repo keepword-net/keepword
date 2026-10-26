@@ -11,6 +11,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "docs/keepword.example.toml"
       - ".forgejo/workflows/install.yml"
   push:
@@ -23,6 +24,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "docs/keepword.example.toml"
       - ".forgejo/workflows/install.yml"
 

@@ -594,6 +594,9 @@ else
             rm -rf "$tmp"
         fi
         CARGO="$CARGO_HOME/bin/cargo"
+        # This stable, not the checkout's rust-toolchain.toml: that would add
+        # a toolchain here with each bump, and nothing removes them.
+        export RUSTUP_TOOLCHAIN=stable
         have=$("$CARGO_HOME/bin/rustc" --version | awk '{print $2}')
         version_ge "$have" "$MIN_RUST" || die "Rust $have is older than the required $MIN_RUST"
         info "using Rust $have"

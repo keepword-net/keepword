@@ -9,6 +9,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "docs/keepword.example.toml"
       - ".forgejo/workflows/ci.yml"
   pull_request:
@@ -16,6 +17,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "docs/keepword.example.toml"
       - ".forgejo/workflows/ci.yml"
 

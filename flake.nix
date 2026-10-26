@@ -15,7 +15,9 @@
           overlays = [ rust-overlay.overlays.default ];
         };
 
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        # The version CI uses, the same one rustup picks
+        toolchain = (builtins.fromTOML (builtins.readFile ./rust-toolchain.toml)).toolchain;
+        rustToolchain = pkgs.rust-bin.stable.${toolchain.channel}.default.override {
           extensions = [ "rust-src" "clippy" "rustfmt" ];
         };
       in
