@@ -30,7 +30,7 @@ jobs:
     runs-on: rust
     steps:
       - uses: actions/checkout@v7
-      - uses: https://github.com/Swatinem/rust-cache@v2
+      - uses: https://github.com/Swatinem/rust-cache@v2.9.3
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --all-features
       - run: cargo test --workspace
@@ -46,7 +46,7 @@ jobs:
         working-directory: crates/keepword-tlsn
     steps:
       - uses: actions/checkout@v7
-      - uses: https://github.com/Swatinem/rust-cache@v2
+      - uses: https://github.com/Swatinem/rust-cache@v2.9.3
         with:
           workspaces: crates/keepword-tlsn
       - run: cargo fmt --check
