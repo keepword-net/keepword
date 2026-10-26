@@ -9,6 +9,16 @@ only change incompatibly in a new major version.
 
 ### Added
 
+- **Debian packages, in an apt repository.** Each release also comes as a
+  `.deb` for amd64 and arm64, published to Keepword's apt repository on
+  git.keepword.net: releases in its `stable` suite, and with the
+  pre-releases in `beta`. On Debian and Ubuntu, `install.sh --binary`
+  installs the package from there, so `apt upgrade` keeps the node
+  current, and a re-run moves a node installed before onto it, keeping
+  its key and data. `--no-apt` installs the release archive instead, and
+  `--deb FILE` a package you have. The package sets up no node and starts
+  nothing by itself; an upgrade restarts a running node, and even a purge
+  keeps `/var/lib/keepword`.
 - **Alerts are sent to your phone or a chat channel**, so you don't have
   to open the web UI to see them: an ntfy topic, a Discord or Slack
   webhook, or any webhook, which gets the signed alerts as JSON. Set

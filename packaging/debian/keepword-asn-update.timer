@@ -1,0 +1,12 @@
+# From the keepword Debian package: the timer scripts/install.sh writes
+# elsewhere.
+[Unit]
+Description=Weekly refresh of the Keepword IP-to-ASN table
+
+[Timer]
+OnCalendar=weekly
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

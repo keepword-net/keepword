@@ -1,0 +1,8 @@
+# The Rust for development and CI, so clippy and rustfmt agree in both.
+# rustup and flake.nix read this; the installer builds with stable instead.
+# Bump it in its own pull request, to the Rust in the ci/debian image (CI
+# downloads any other version on every job), and fix the new lints there.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

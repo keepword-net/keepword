@@ -1,0 +1,11 @@
+#!/bin/sh
+# Removing the package stops the node and its timer. An upgrade doesn't:
+# the new version's postinst restarts the node instead.
+set -e
+
+if [ "$1" = remove ] && command -v systemctl >/dev/null 2>&1; then
+    if [ -d /run/systemd/system ]; then
+        systemctl stop keepword.service keepword-asn-update.timer keepword-asn-update.service || true
+    fi
+    systemctl disable keepword.service keepword-asn-update.timer >/dev/null 2>&1 || true
+fi

@@ -18,6 +18,7 @@ crates/keepword-tlsn       TLSNotary proof tier (separate workspace)
 docs/                      these docs, also at keepword.net/docs
 scripts/install.sh         the installer
 packaging/docker/          container entrypoint and compose file
+packaging/debian/          the Debian package: its services and build script
 ```
 
 ## Checks

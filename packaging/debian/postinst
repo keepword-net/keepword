@@ -1,0 +1,21 @@
+#!/bin/sh
+# The keepword package sets up nothing and starts nothing on its own: the
+# installer (scripts/install.sh) makes the node and enables its services.
+# An upgrade restarts a node that runs, so it runs the new version.
+set -e
+
+if [ "$1" = configure ]; then
+    if ! getent passwd keepword >/dev/null; then
+        adduser --quiet --system --group --home /var/lib/keepword --no-create-home \
+            --shell /usr/sbin/nologin --gecos "Keepword node" keepword
+    fi
+    if [ ! -d /var/lib/keepword ]; then
+        install -d -m 0750 -o keepword -g keepword /var/lib/keepword
+    fi
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload || true
+        if [ -n "$2" ]; then
+            systemctl try-restart keepword.service || true
+        fi
+    fi
+fi

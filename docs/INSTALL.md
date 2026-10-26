@@ -36,6 +36,11 @@ installer clones the source and builds `main`, which can be ahead of the
 latest release; add `--ref vX.Y.Z` to build a release. With `--binary`,
 `--ref vX.Y.Z` picks a release other than the latest.
 
+On Debian and Ubuntu with systemd, `--binary` installs the release as a
+Debian package from Keepword's apt repository, so `apt upgrade` keeps the
+node current with the rest of the system: see
+[The Debian package](#the-debian-package).
+
 The installer:
 
 1. installs dependencies with the system package manager: build tools, or
@@ -46,7 +51,7 @@ The installer:
    old, verifying the `rustup-init` checksum (not with `--binary`);
 3. builds `keepword` in release mode, or downloads the release binary and
    checks it against the release's `SHA256SUMS`, and installs it to
-   `/usr/local/bin`;
+   `/usr/local/bin`; or installs the Debian package;
 4. creates a `keepword` system user and `/var/lib/keepword` (mode 0750);
 5. creates the node: key, config and empty log;
 6. downloads the IP-to-ASN table from iptoasn.com and schedules a weekly
@@ -107,6 +112,48 @@ The systemd units run as the unprivileged `keepword` user. Hardening:
 read-only system, no home directories, no capabilities, a system-call
 allow-list, no new privileges, and memory that can't be both writable and
 executable (except with `--render`, because Chromium's JIT needs it).
+
+### The Debian package
+
+Releases from 2.5.0 on are also Debian packages, for amd64 and arm64, in
+Keepword's apt repository at
+`https://git.keepword.net/api/packages/keepword/debian`. Its `stable` suite
+has the releases, and `beta` has them and the pre-releases. On Debian and
+Ubuntu with systemd, `--binary` installs the package from there instead of
+the release archive, and adds the repository: `stable`, or `beta` when
+`--ref` is a pre-release, so that node gets the pre-releases after it and
+then the release. `apt upgrade` keeps the node current, and re-running the
+installer still upgrades it too. A node installed before, built or from the
+archive, moves onto the package when you re-run the installer with
+`--binary`, keeping its key and data. `--no-apt` installs the release archive
+instead and moves a node off the package; `--deb FILE` installs a package
+you have, such as one from a release's downloads, without the repository.
+
+The package holds `/usr/bin/keepword`, the IP-to-ASN refresh in
+`/usr/lib/keepword/`, and in `/usr/lib/systemd/system/` the same services the
+installer writes for the other ways. It sets up no node and starts nothing by
+itself: installed on its own, it gives you the `keepword` command, enough to
+verify evidence, and the installer sets up the node. Where a node differs from
+the package's services, with `--public-api` or `--data-dir`, the installer
+adds a drop-in, `/etc/systemd/system/keepword.service.d/installer.conf`. An
+upgrade restarts a running node, `apt remove keepword` stops it, and even
+`apt purge` keeps `/var/lib/keepword`.
+
+To add the repository yourself:
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo curl -fsSL https://git.keepword.net/api/packages/keepword/debian/repository.key \
+    -o /etc/apt/keyrings/keepword.asc
+sudo tee /etc/apt/sources.list.d/keepword.sources >/dev/null <<'EOF'
+Types: deb
+URIs: https://git.keepword.net/api/packages/keepword/debian
+Suites: stable
+Components: main
+Signed-By: /etc/apt/keyrings/keepword.asc
+EOF
+sudo apt update && sudo apt install keepword
+```
 
 ### Day-to-day
 
@@ -221,6 +268,9 @@ CDN from challenging requests to `/v1/` (Cloudflare's Bot Fight Mode,
 sudo sh scripts/install.sh --uninstall           # keeps /var/lib/keepword
 sudo sh scripts/install.sh --uninstall --purge   # deletes the key and log too
 ```
+
+On a node with the Debian package, both remove the package and the apt
+repository too.
 
 ## Container
 

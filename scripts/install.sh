@@ -5,7 +5,9 @@
 # static binary, and sets it up as a hardened system service: a dedicated
 # user, a data directory, an IP-to-ASN table that refreshes weekly, systemd
 # (or OpenRC) units, and optionally a TLS reverse proxy (Caddy) and the
-# TLSNotary notary service.
+# TLSNotary notary service. On Debian and Ubuntu, --binary installs the
+# release's Debian package from the project's apt repository instead, with
+# the package's units (packaging/debian/).
 #
 # Supported: Debian, Ubuntu, Fedora, RHEL-likes, Arch, openSUSE, Alpine.
 # Re-running upgrades an existing installation in place; the witness key and
@@ -36,6 +38,8 @@ MIN_RUST="1.95"
 
 SOURCE=""
 BINARY=0
+APT=1
+DEB=""
 ASN=""
 COUNTRY=""
 DOMAIN=""
@@ -91,7 +95,13 @@ Features:
 Installation:
   --binary              Install the latest release's static binary instead of
                         building: no compiler or Rust, for small machines
-                        (x86_64 and arm64; not with --render or --notary)
+                        (x86_64 and arm64; not with --render or --notary).
+                        On Debian and Ubuntu with systemd, it is the Debian
+                        package from the project's apt repository, which
+                        apt upgrade then keeps current
+  --no-apt              With --binary, install the release archive, not the
+                        Debian package
+  --deb FILE            Install this Debian package (implies --binary)
   --source DIR          Build from a local checkout
   --repo URL            Git repository (default: git.keepword.net/keepword/keepword)
   --ref REF             Branch or tag to build (default: main); with --binary,
@@ -147,6 +157,8 @@ while [ $# -gt 0 ]; do
         --render) RENDER=1 ;;
         --notary) NOTARY=1 ;;
         --binary) BINARY=1 ;;
+        --no-apt) APT=0 ;;
+        --deb) need_arg "$@"; DEB=$2; BINARY=1; shift ;;
         --source) need_arg "$@"; SOURCE=$2; shift ;;
         --repo) need_arg "$@"; REPO_URL=$2; shift ;;
         --ref) need_arg "$@"; REPO_REF=$2; shift ;;
@@ -177,6 +189,13 @@ if [ "$BINARY" -eq 1 ]; then
     [ -z "$SOURCE" ] || die "use either --binary or --source, not both"
     [ "$RENDER" -eq 0 ] || die "--render needs a source build: release binaries don't include it"
     [ "$NOTARY" -eq 0 ] || die "--notary needs a source build: release binaries don't include it"
+fi
+if [ -n "$DEB" ]; then
+    [ "$APT" -eq 1 ] || die "use either --deb or --no-apt, not both"
+    [ -z "$REPO_REF" ] || die "use either --deb or --ref, not both"
+    [ -f "$DEB" ] || die "--deb: no such file: $DEB"
+    # apt-get takes a package file by its path.
+    DEB="$(cd "$(dirname "$DEB")" && pwd)/$(basename "$DEB")"
 fi
 
 BIN="$PREFIX/bin"
@@ -211,6 +230,35 @@ if [ -r /etc/os-release ]; then
     # shellcheck disable=SC1091
     DISTRO=$(. /etc/os-release && printf '%s' "${ID:-unknown}")
 fi
+
+# On Debian and Ubuntu, a release binary is the Debian package from the apt
+# repository of the Forgejo the releases are on, and its units are the
+# package's. Not where the binaries go elsewhere (--prefix), or packages are
+# left alone (--no-packages).
+repo=${REPO_URL%.git}
+owner=${repo%/*}
+APT_URL="${repo%/*/*}/api/packages/${owner##*/}/debian"
+USE_APT=0
+if [ "$BINARY" -eq 1 ] && [ "$APT" -eq 1 ] && [ "$PKG" = apt-get ] && [ "$PACKAGES" -eq 1 ] \
+    && [ "$INIT" = systemd ] && [ "$PREFIX" = /usr/local ]; then
+    USE_APT=1
+fi
+[ -z "$DEB" ] || [ "$USE_APT" -eq 1 ] \
+    || die "--deb needs apt and systemd, without --no-packages or --prefix"
+
+deb_installed() {
+    command -v dpkg-query >/dev/null 2>&1 || return 1
+    # shellcheck disable=SC2016
+    [ "$(dpkg-query -W -f='${Status}' keepword 2>/dev/null)" = "install ok installed" ]
+}
+
+# The installer's drop-ins for the package's units; others' stay.
+rm_dropins() {
+    for unit in keepword.service keepword-asn-update.service; do
+        rm -f "/etc/systemd/system/$unit.d/installer.conf"
+        rmdir "/etc/systemd/system/$unit.d" 2>/dev/null || true
+    done
+}
 
 # Run a command as the service user.
 as_keepword() {
@@ -267,6 +315,12 @@ if [ "$UNINSTALL" -eq 1 ]; then
     for s in keepword-notary keepword keepword-asn-update.timer; do
         svc stop "$s"; svc disable "$s"
     done
+    if deb_installed; then
+        DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq keepword >/dev/null
+        info "removed the keepword package"
+    fi
+    rm -f /etc/apt/sources.list.d/keepword.sources /etc/apt/keyrings/keepword.asc
+    rm_dropins
     rm -f /etc/systemd/system/keepword.service /etc/systemd/system/keepword-notary.service \
         /etc/systemd/system/keepword-asn-update.service /etc/systemd/system/keepword-asn-update.timer \
         /etc/init.d/keepword /etc/init.d/keepword-notary /etc/periodic/weekly/keepword-asn-update \
@@ -306,7 +360,14 @@ UPGRADE=0
 step "Keepword installer"
 info "system:   $DISTRO, packages via ${PKG:-none}, services via $INIT"
 info "data:     $DATA_DIR$( [ "$UPGRADE" -eq 1 ] && printf ' (existing node: upgrade in place)')"
-info "binaries: $BIN$( [ "$BINARY" -eq 1 ] && printf ' (release binary, no build)')"
+if [ -n "$DEB" ]; then
+    info "binaries: /usr/bin (the Debian package $DEB)"
+elif [ "$USE_APT" -eq 1 ]; then
+    info "binaries: the Debian package from $APT_URL,"
+    info "          or where it has no package of the release, the release binary in $BIN"
+else
+    info "binaries: $BIN$( [ "$BINARY" -eq 1 ] && printf ' (release binary, no build)')"
+fi
 [ -z "$ENDPOINT" ] || info "endpoint: $ENDPOINT"
 [ "$RENDER" -eq 0 ] || info "extras:   headless rendering (Chromium)"
 [ "$NOTARY" -eq 0 ] || info "extras:   TLSNotary notary on $NOTARY_ADDR"
@@ -369,22 +430,113 @@ esac
 
 # ------------------------------------------------------------------ binary
 
+# A release's Debian version: 2.5.0-beta.4 is 2.5.0~beta.4, as
+# packaging/debian/build-deb.sh makes it.
+deb_version() { printf '%s' "${1#v}" | sed 's/-/~/'; }
+
+# Whether the apt repository has release $1 for this machine. The stable
+# suite has releases; beta has them and pre-releases.
+apt_has() {
+    arch=$(dpkg --print-architecture 2>/dev/null) || return 1
+    case "$1" in *-*) suite=beta ;; *) suite=stable ;; esac
+    curl -fsSL "$APT_URL/dists/$suite/main/binary-$arch/Packages" 2>/dev/null \
+        | grep -qx "Version: $(deb_version "$1")"
+}
+
+# Installs the Debian package: the --deb file, or release $tag from the apt
+# repository, which apt upgrade then follows: stable, or for a pre-release
+# beta, whose releases come after it too.
+install_deb() {
+    if [ -n "$DEB" ]; then
+        apt-get install -y -qq --no-install-recommends --allow-downgrades "$DEB" >/dev/null
+    elif [ "$keep_deb" -eq 1 ]; then
+        info "$APT_URL has no Debian package of $tag; keeping the installed one"
+    else
+        case "$tag" in *-*) suite=beta ;; *) suite=stable ;; esac
+        install -d -m 0755 /etc/apt/keyrings
+        curl -fsSL --retry 3 -o /etc/apt/keyrings/keepword.asc.new "$APT_URL/repository.key" \
+            || die "could not download $APT_URL/repository.key"
+        chmod 0644 /etc/apt/keyrings/keepword.asc.new
+        mv -f /etc/apt/keyrings/keepword.asc.new /etc/apt/keyrings/keepword.asc
+        cat >/etc/apt/sources.list.d/keepword.sources <<EOF
+# Keepword's releases, added by its installer; --uninstall removes them.
+Types: deb
+URIs: $APT_URL
+Suites: $suite
+Components: main
+Signed-By: /etc/apt/keyrings/keepword.asc
+EOF
+        apt-get update -qq
+        if [ -n "$REPO_REF" ]; then
+            apt-get install -y -qq --no-install-recommends --allow-downgrades \
+                "keepword=$(deb_version "$tag")" >/dev/null
+        else
+            apt-get install -y -qq --no-install-recommends keepword >/dev/null
+        fi
+    fi
+    BIN=/usr/bin
+    LIBEXEC=/usr/lib/keepword
+    # A node installed before, built or from the release archive: its binary
+    # and units give way to the package's.
+    if [ -e "$PREFIX/bin/keepword" ] || [ -e /etc/systemd/system/keepword.service ]; then
+        for s in keepword keepword-asn-update.timer; do svc stop "$s"; svc disable "$s"; done
+        rm -f "$PREFIX/bin/keepword" /etc/systemd/system/keepword.service \
+            /etc/systemd/system/keepword-asn-update.service /etc/systemd/system/keepword-asn-update.timer
+        rm -rf "$PREFIX/lib/keepword"
+        [ "$LIVE_INIT" -eq 0 ] || systemctl daemon-reload
+        info "moved the node installed in $PREFIX over to the package"
+    fi
+    info "$BIN/keepword: $("$BIN/keepword" --version), the Debian package"
+}
+
+# A node moving off the Debian package, to a build or the release archive:
+# the package goes, the data stays.
+leave_deb() {
+    deb_installed || return 0
+    DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq keepword >/dev/null
+    rm -f /etc/apt/sources.list.d/keepword.sources /etc/apt/keyrings/keepword.asc
+    rm_dropins
+    info "removed the keepword Debian package: $BIN/keepword replaces it"
+}
+
 if [ "$BINARY" -eq 1 ]; then
-    step "Downloading the release binary"
-    case "$(uname -m)" in
-        x86_64|amd64) target=x86_64-unknown-linux-musl ;;
-        aarch64|arm64) target=aarch64-unknown-linux-musl ;;
-        *) die "no release binary for CPU $(uname -m); drop --binary to build from source" ;;
-    esac
     releases="${REPO_URL%.git}/releases"
     tag=$REPO_REF
-    if [ -z "$tag" ]; then
+    if [ -z "$tag" ] && [ -z "$DEB" ]; then
         # /releases/latest redirects to the newest stable release's tag.
         tag=$(curl -fsSL -o /dev/null -w '%{url_effective}' "$releases/latest") \
             || die "could not reach $releases"
         tag=${tag##*/}
         case "$tag" in v[0-9]*) ;; *) die "no release found at $releases" ;; esac
     fi
+    # Releases before the package, or one whose package isn't published yet,
+    # come from the archive. A node on the package stays on it rather than
+    # go back to an older release's archive.
+    no_deb=0
+    keep_deb=0
+    if [ "$USE_APT" -eq 1 ] && [ -z "$DEB" ] && ! apt_has "$tag"; then
+        if ! deb_installed; then
+            no_deb=1
+            USE_APT=0
+        elif [ -n "$REPO_REF" ]; then
+            die "$APT_URL has no Debian package of $tag; --no-apt installs its archive"
+        else
+            keep_deb=1
+        fi
+    fi
+fi
+
+if [ "$USE_APT" -eq 1 ]; then
+    step "Installing the Debian package"
+    install_deb
+elif [ "$BINARY" -eq 1 ]; then
+    step "Downloading the release binary"
+    [ "$no_deb" -eq 0 ] || info "$APT_URL has no Debian package of $tag"
+    case "$(uname -m)" in
+        x86_64|amd64) target=x86_64-unknown-linux-musl ;;
+        aarch64|arm64) target=aarch64-unknown-linux-musl ;;
+        *) die "no release binary for CPU $(uname -m); drop --binary to build from source" ;;
+    esac
     name="keepword-$tag-$target"
     tmp=$(mktemp -d)
     curl -fsSL --retry 3 -o "$tmp/$name.tar.gz" "$releases/download/$tag/$name.tar.gz" \
@@ -442,6 +594,9 @@ else
             rm -rf "$tmp"
         fi
         CARGO="$CARGO_HOME/bin/cargo"
+        # This stable, not the checkout's rust-toolchain.toml: that would add
+        # a toolchain here with each bump, and nothing removes them.
+        export RUSTUP_TOOLCHAIN=stable
         have=$("$CARGO_HOME/bin/rustc" --version | awk '{print $2}')
         version_ge "$have" "$MIN_RUST" || die "Rust $have is older than the required $MIN_RUST"
         info "using Rust $have"
@@ -491,6 +646,7 @@ else
         info "installed $BIN/keepword-tlsn"
     fi
 fi
+[ "$USE_APT" -eq 1 ] || leave_deb
 
 # -------------------------------------------------------------- user, data
 
@@ -516,9 +672,11 @@ else
     printf '%s\n' "$DATA_DIR" >/etc/keepword/data-dir
 fi
 
-# Helper for refreshing the IP-to-ASN table, used now and by the timer.
-install -d "$LIBEXEC"
-cat >"$LIBEXEC/update-asn-db" <<EOF
+# Helper for refreshing the IP-to-ASN table, used now and by the timer. The
+# Debian package has it already (packaging/debian/update-asn-db).
+if [ "$USE_APT" -eq 0 ]; then
+    install -d "$LIBEXEC"
+    cat >"$LIBEXEC/update-asn-db" <<EOF
 #!/bin/sh
 # Refresh the IP-to-ASN table (iptoasn.com, public domain data).
 set -eu
@@ -532,7 +690,8 @@ chmod 0640 "\$tmp"
 mv -f "\$tmp" "\$dir/ip2asn-combined.tsv"
 trap - EXIT
 EOF
-chmod 0755 "$LIBEXEC/update-asn-db"
+    chmod 0755 "$LIBEXEC/update-asn-db"
+fi
 
 if [ "$UPGRADE" -eq 0 ]; then
     set -- --retain "${RETAIN:-normalized}"
@@ -634,7 +793,42 @@ fi
 
 serve_args="serve --addr $UI_ADDR --api-addr $API_ADDR --watch --anchor"
 
+# The Debian package's units, with drop-ins for what this node does
+# differently: the API on another address, or another data directory.
+write_dropins() {
+    rm_dropins
+    if [ "$API_ADDR" != 127.0.0.1:8481 ] || [ "$DATA_DIR" != /var/lib/keepword ]; then
+        install -d /etc/systemd/system/keepword.service.d
+        cat >/etc/systemd/system/keepword.service.d/installer.conf <<EOF
+# Written by the Keepword installer, which rewrites it on every run: what
+# this node does differently from the package's keepword.service.
+[Service]
+Environment=KEEPWORD_DIR=$DATA_DIR
+Environment=HOME=$DATA_DIR
+ReadWritePaths=$DATA_DIR
+ExecStart=
+ExecStart=$BIN/keepword $serve_args
+EOF
+    fi
+    if [ "$DATA_DIR" != /var/lib/keepword ]; then
+        install -d /etc/systemd/system/keepword-asn-update.service.d
+        cat >/etc/systemd/system/keepword-asn-update.service.d/installer.conf <<EOF
+# Written by the Keepword installer, which rewrites it on every run: this
+# node's data directory.
+[Service]
+ReadWritePaths=$DATA_DIR
+ExecStart=
+ExecStart=$LIBEXEC/update-asn-db $DATA_DIR
+EOF
+    fi
+}
+
 write_systemd() {
+    if [ "$USE_APT" -eq 1 ]; then
+        write_dropins
+        [ "$LIVE_INIT" -eq 0 ] || systemctl daemon-reload
+        return
+    fi
     # V8 needs writable+executable memory; keep that protection unless the
     # headless browser is in use.
     mdwe="MemoryDenyWriteExecute=yes"
@@ -877,6 +1071,8 @@ cat <<EOF
     peer API      http://$API_ADDR/v1/$( [ -n "$ENDPOINT" ] && printf '  →  %s/v1/' "$ENDPOINT")
 EOF
 [ "$NOTARY" -eq 0 ] || printf '    notary        %s (TCP; open it in your firewall)\n' "$NOTARY_ADDR"
+[ "$USE_APT" -eq 0 ] || [ -n "$DEB" ] \
+    || printf '    upgrades      apt upgrade, or this installer again\n'
 cat <<EOF
 
     Next steps:

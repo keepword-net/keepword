@@ -11,6 +11,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "docs/keepword.example.toml"
       - ".forgejo/workflows/install.yml"
   push:
@@ -23,6 +24,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "docs/keepword.example.toml"
       - ".forgejo/workflows/install.yml"
 
@@ -32,7 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: command -v shellcheck || { apt-get update -qq && apt-get install -y -qq shellcheck >/dev/null; }
-      - run: shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh
+      - run: |
+          shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh \
+            packaging/debian/build-deb.sh packaging/debian/postinst packaging/debian/prerm \
+            packaging/debian/postrm packaging/debian/update-asn-db
 
   # A real systemd host: install, run, upgrade, purge. Nodes started in CI
   # never dial the default seeds: they would join the real network.
@@ -110,6 +115,12 @@ jobs:
             prep: apk add --no-cache -q openrc procps
             init: openrc
             mode: binary
+          # Built from source, then moved onto a Debian package of that
+          # build, whose services must be the installer's.
+          - os: debian
+            prep: apt-get update -qq && apt-get install -y -qq systemd >/dev/null
+            init: systemd
+            mode: deb
     steps:
       - uses: actions/checkout@v7
       - name: Prepare ${{ matrix.os }}

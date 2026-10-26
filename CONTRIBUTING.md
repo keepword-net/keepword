@@ -54,8 +54,10 @@ touches.
 ## Setting up
 
 You need Rust 1.95 or newer (`rustup` or your distribution's package).
+`rust-toolchain.toml` pins the version CI uses, and rustup installs it for
+you in the checkout, so clippy and rustfmt give the same results as in CI.
 With Nix, `nix develop` (or direnv, using the `.envrc`) gives you a shell
-with the toolchain, clippy and rustfmt.
+with that toolchain, clippy and rustfmt.
 
 ```sh
 git clone https://git.keepword.net/<you>/keepword.git && cd keepword
@@ -112,7 +114,9 @@ cargo test --release
 If you touched `scripts/` or `packaging/`:
 
 ```sh
-shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh
+shellcheck -s sh scripts/*.sh scripts/ci/*.sh packaging/docker/entrypoint.sh \
+    packaging/debian/build-deb.sh packaging/debian/postinst packaging/debian/prerm \
+    packaging/debian/postrm packaging/debian/update-asn-db
 ```
 
 CI also installs the node on several distributions and in a container.
