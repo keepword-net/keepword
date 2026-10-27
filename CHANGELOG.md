@@ -138,9 +138,16 @@ only change incompatibly in a new major version.
   set` and in the settings, which then only show the file to fix; the
   web UI won't restart Keepword with it.
 - **Certificates from eMudhra's compromised intermediates were trusted.**
-  Keepword now refuses a certificate chain through eMudhra's G3B or G3C
-  TLS intermediates (RUSTSEC-2026-0381, RUSTSEC-2026-0382), so a page
-  served with one fails to capture.
+  Their private keys are public. Keepword now refuses a certificate chain
+  through eMudhra's G3B or G3C intermediates, so a page served with one
+  fails to capture, and TLSNotary proofs no longer trust the emSign ECC
+  Root CA - G3 above them (RUSTSEC-2026-0381, RUSTSEC-2026-0382,
+  RUSTSEC-2026-0383).
+- **Constant-time code in two cryptography crates could leak secrets
+  through timing** (RUSTSEC-2026-0385, RUSTSEC-2026-0387): `ctutils`,
+  under signing and password hashing, and `crypto-bigint` 0.7, under the
+  TLSNotary tier. Both are updated. The TLSNotary tier also uses
+  `crypto-bigint` 0.5, which has the same issue and no fix yet.
 
 ## [2.4.0] - 2026-10-20
 
