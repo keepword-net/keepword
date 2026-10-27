@@ -171,6 +171,8 @@ a.state:hover { color: var(--accent); }
   gap: 28px;
   align-items: start;
 }
+/* Under the overview's stats the side column is one stat wide, so its boxes line up with them. */
+.stats + .cols { grid-template-columns: minmax(0, 1fr) calc((100% - 3 * 16px) / 4); gap: 16px; }
 .col-side { display: grid; gap: 16px; min-width: 0; }
 .col-main > :first-child { margin-top: 0; }
 .col-side > .notice { margin-bottom: 0; }
@@ -180,7 +182,7 @@ a.state:hover { color: var(--accent); }
 .measure { max-width: 880px; }
 
 @media (max-width: 1180px) {
-  .cols { grid-template-columns: minmax(0, 1fr); }
+  .cols, .stats + .cols { grid-template-columns: minmax(0, 1fr); }
   .col-side.first { order: -1; }
   .sticky { position: static; }
 }
@@ -320,8 +322,8 @@ p.notice { margin: 10px 0; }
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 .stat {
   background: var(--surface);
