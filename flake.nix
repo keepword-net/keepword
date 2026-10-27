@@ -27,6 +27,7 @@
             rustToolchain
             pkg-config
             openssl
+            cargo-audit
           ];
 
           # Helps build scripts find things
