@@ -155,6 +155,10 @@ Every check says exactly what it proves, and what it doesn't.
 - 🛠️ **Build with us.** Everything is in Rust, tested end to end, and
   documented at [keepword.net/docs](https://keepword.net/docs/). Start with
   [CONTRIBUTING.md](https://git.keepword.net/keepword/keepword/src/branch/main/CONTRIBUTING.md).
+  Issues and pull requests go to git.keepword.net, where you can sign in
+  with GitHub or GitLab. The copies on
+  [GitHub](https://github.com/keepword-net/keepword) and
+  [Codeberg](https://codeberg.org/keepword/keepword) are mirrors.
 
 <details>
 <summary><b>Questions people ask</b></summary>

@@ -5,7 +5,11 @@ real-world page in the test corpus and every bug someone catches before a
 hostile page or peer does.
 
 The project lives at [git.keepword.net/keepword/keepword](https://git.keepword.net/keepword/keepword).
-Registration there is open: sign up, fork, and open a pull request.
+Registration there is open: sign up, or sign in with GitHub or GitLab,
+fork, and open a pull request. The copies on
+[GitHub](https://github.com/keepword-net/keepword) and
+[Codeberg](https://codeberg.org/keepword/keepword) are mirrors: open
+issues and pull requests here.
 
 To talk a change over, or to ask anything about the code, come to
 [#dev:keepword.net](https://matrix.to/#/#dev:keepword.net) on Matrix.
