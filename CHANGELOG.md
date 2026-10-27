@@ -137,6 +137,10 @@ only change incompatibly in a new major version.
   that isn't valid, changed by hand, can be mended with `keepword config
   set` and in the settings, which then only show the file to fix; the
   web UI won't restart Keepword with it.
+- **Certificates from eMudhra's compromised intermediates were trusted.**
+  Keepword now refuses a certificate chain through eMudhra's G3B or G3C
+  TLS intermediates (RUSTSEC-2026-0381, RUSTSEC-2026-0382), so a page
+  served with one fails to capture.
 
 ## [2.4.0] - 2026-10-20
 
