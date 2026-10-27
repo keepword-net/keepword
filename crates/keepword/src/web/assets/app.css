@@ -162,7 +162,7 @@ a.state:hover { color: var(--accent); }
 }
 .chips .count { background: var(--surface-2); color: var(--muted); margin-left: 4px; }
 
-.content { padding: 28px 36px 48px; max-width: 1360px; min-width: 0; }
+.content { padding: 28px 36px 48px; max-width: 1360px; min-width: 0; container-type: inline-size; }
 
 /* Two columns: the page's main one, and beside it what to know and do. */
 .cols {
@@ -321,7 +321,7 @@ p.notice { margin: 10px 0; }
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -337,7 +337,12 @@ p.notice { margin: 10px 0; }
 a.stat:hover { border-color: var(--accent); }
 .stat .n { display: block; font-size: 22px; font-weight: 700; }
 .stat .l { color: var(--muted); font-size: 13px; }
-@media (max-width: 720px) { .stats { grid-template-columns: 1fr 1fr; } }
+/* Two by two where four in a row would be under 210px each, never three and
+   one; the side column, one stat wide, then goes below. */
+@container (width < 888px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats + .cols { grid-template-columns: minmax(0, 1fr); }
+}
 
 .welcome { margin-bottom: 16px; }
 .welcome h2 { font-size: 20px; }
