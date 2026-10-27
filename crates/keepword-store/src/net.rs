@@ -921,6 +921,15 @@ impl Store {
         rows.map(|j| json(&j?)).collect()
     }
 
+    /// The latest alerts about `url`.
+    pub fn alerts_about(&self, url: &str, limit: u32) -> Result<Vec<Signed<Alert>>> {
+        let db = self.db();
+        let mut st =
+            db.prepare("SELECT json FROM alerts WHERE url = ?1 ORDER BY issued_at DESC LIMIT ?2")?;
+        let rows = st.query_map(params![url, limit], |r| r.get::<_, String>(0))?;
+        rows.map(|j| json(&j?)).collect()
+    }
+
     /// Alerts stored after the one numbered `after`, in the order they came
     /// in, with their numbers. A witness's alert may come in days after it
     /// was raised, so this goes by when it was stored.

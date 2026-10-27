@@ -411,7 +411,12 @@ pub(super) async fn detail(
         .history_latest(&url, if more { 500 } else { 20 })?;
     let captures = node.store.capture_count(&url)?;
     let verdict = node.verdict(&url)?;
-    if hist.is_empty() && watch.is_none() && verdict.considered == 0 {
+    // What other witnesses raised about it: this node's own alerts are its
+    // changes and verdict below.
+    let me = node.key.public();
+    let mut alerts = node.store.alerts_about(&url, 50)?;
+    alerts.retain(|a| a.body.issuer != me);
+    if hist.is_empty() && watch.is_none() && verdict.considered == 0 && alerts.is_empty() {
         return Err(not_found("This page"));
     }
     // Ask the witnesses assigned to it for their latest captures, for the
@@ -470,56 +475,69 @@ pub(super) async fn detail(
         }
     };
     let main = html! {
-        section {
-            div.section-head {
-                h2 { "Changes" }
-                @if to_review > 1 {
-                    (view::button(&ui, "/review", &[("url", u), ("upto", &newest.to_string()), ("back", &here)],
-                        "Mark all as reviewed", "ghost small", None))
-                }
+        @if !alerts.is_empty() {
+            section {
+                div.section-head { h2 { "Alerts from other witnesses" } }
+                (super::alerts::list(&ui, &alerts, false)?)
             }
-            (super::change::history(&ui, u, &changes))
         }
-        section {
-            div.section-head {
-                h2 { "Evidence" }
-                span.muted.small { (captures) " " (if captures == 1 { "capture" } else { "captures" }) }
+        @if hist.is_empty() && changes.is_empty() {
+            section.empty {
+                p { "This node hasn't captured this page." }
+                p.muted { "Check it now to keep its own signed record of what the page says, or watch it to hear when it changes." }
             }
-            p.muted.small {
-                "Each capture is signed by this node and logged where anyone can check it. "
-                "Open one to download its evidence bundle."
+        } @else {
+            section {
+                div.section-head {
+                    h2 { "Changes" }
+                    @if to_review > 1 {
+                        (view::button(&ui, "/review", &[("url", u), ("upto", &newest.to_string()), ("back", &here)],
+                            "Mark all as reviewed", "ghost small", None))
+                    }
+                }
+                (super::change::history(&ui, u, &changes))
             }
-            ul.list {
-                @for r in &hist {
-                    @let a = &r.signed.attestation;
-                    li.row {
-                        a.grow href={ "/a/" (r.id) } {
-                            (view::absolute(a.fetched_at_ms))
-                            div.sub.mono { (r.id.short()) " · " (crate::method_name(a.method)) }
+            section {
+                div.section-head {
+                    h2 { "Evidence" }
+                    span.muted.small { (captures) " " (if captures == 1 { "capture" } else { "captures" }) }
+                }
+                p.muted.small {
+                    "Each capture is signed by this node and logged where anyone can check it. "
+                    "Open one to download its evidence bundle."
+                }
+                ul.list {
+                    @for r in &hist {
+                        @let a = &r.signed.attestation;
+                        li.row {
+                            a.grow href={ "/a/" (r.id) } {
+                                (view::absolute(a.fetched_at_ms))
+                                div.sub.mono { (r.id.short()) " · " (crate::method_name(a.method)) }
+                            }
+                            span class={ "badge" @if a.status >= 400 { " status" } } { "HTTP " (a.status) }
                         }
-                        span class={ "badge" @if a.status >= 400 { " status" } } { "HTTP " (a.status) }
+                    }
+                }
+                @if captures > hist.len() as u64 {
+                    @if more {
+                        p.muted.small { "The latest " (hist.len()) " of " (captures) ". " code { "keepword history" } " lists them all." }
+                    } @else {
+                        a.btn.ghost.small href={ (here) "&more=1" } { "Show more" }
                     }
                 }
             }
-            @if captures > hist.len() as u64 {
-                @if more {
-                    p.muted.small { "The latest " (hist.len()) " of " (captures) ". " code { "keepword history" } " lists them all." }
-                } @else {
-                    a.btn.ghost.small href={ (here) "&more=1" } { "Show more" }
+            details.danger {
+                summary { "Delete what this node kept of this page" }
+                p {
+                    "For an erasure request: deletes the page's content (its text and raw copies) from this node. "
+                    "The signed records stay, so the log remains intact, unless you also forget them."
                 }
-            }
-        }
-        details.danger {
-            summary { "Delete what this node kept of this page" }
-            p {
-                "For an erasure request: deletes the page's content (its text and raw copies) from this node. "
-                "The signed records stay, so the log remains intact, unless you also forget them."
-            }
-            form.stack method="post" action="/page/purge" data-confirm="Delete what this node kept of this page? This can't be undone." {
-                (view::csrf(&ui))
-                input type="hidden" name="u" value=(u);
-                label.check { input type="checkbox" name="forget"; " Also forget the records (the log keeps only their IDs)" }
-                div { button.btn.danger type="submit" { "Delete content" } }
+                form.stack method="post" action="/page/purge" data-confirm="Delete what this node kept of this page? This can't be undone." {
+                    (view::csrf(&ui))
+                    input type="hidden" name="u" value=(u);
+                    label.check { input type="checkbox" name="forget"; " Also forget the records (the log keeps only their IDs)" }
+                    div { button.btn.danger type="submit" { "Delete content" } }
+                }
             }
         }
     };

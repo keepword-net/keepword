@@ -3,6 +3,7 @@
 use axum::extract::State;
 use axum::response::Response;
 use keepword_core::net::{Alert, AlertKind};
+use keepword_core::statement::Signed;
 use maud::{Markup, html};
 
 use super::view::{self, Ctx, Nav};
@@ -16,9 +17,9 @@ pub(super) fn kind_badge(kind: AlertKind) -> Markup {
     }
 }
 
-pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> {
+/// A list of alerts and who raised them; `links` adds each one's page.
+pub(super) fn list(ui: &Ui, alerts: &[Signed<Alert>], links: bool) -> WebResult<Markup> {
     let node = &ui.node;
-    let alerts = node.store.alerts(500)?;
     let me = node.key.public();
     // The same alert, raised on capture after capture, is one entry.
     let same = |a: &Alert, b: &Alert| {
@@ -47,7 +48,7 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             li.row {
                 div.grow {
                     (kind_badge(a.kind)) " "
-                    @if let Some(u) = &a.url { a href=(view::page_link(u)) { (view::address(u)) } }
+                    @if let Some(u) = a.url.as_ref().filter(|_| links) { a href=(view::page_link(u)) { (view::address(u)) } }
                     div.sub {
                         (summary)
                         @if run.len() > 1 { " · " (run.len()) " times since " (view::when(first.issued_at_ms)) }
@@ -58,6 +59,12 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             }
         });
     }
+    Ok(html! { ul.list { @for e in entries { (e) } } })
+}
+
+pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> {
+    let node = &ui.node;
+    let alerts = node.store.alerts(500)?;
     let body = html! {
         div.head { h1 { "Alerts" } }
         dl.legend.small.muted {
@@ -65,10 +72,10 @@ pub(super) async fn page(State(ui): State<Ui>, ctx: Ctx) -> WebResult<Response> 
             dt { (kind_badge(AlertKind::Split)) } dd { "Witnesses saw different versions of a page at the same time." }
             dt { (kind_badge(AlertKind::Equivocation)) } dd { "A witness's log showed two different histories: it can't be trusted." }
         }
-        @if entries.is_empty() {
+        @if alerts.is_empty() {
             div.empty { p { "No alerts." } p.muted { "Alerts from this node and from the witnesses it knows show up here." } }
         } @else {
-            ul.list { @for e in entries { (e) } }
+            (list(&ui, &alerts, true)?)
         }
         @if node.config.notify.targets.is_empty() {
             p.muted.small { "Get alerts on your phone or in a chat channel: " a href="/settings#notify" { "set up notifications" } "." }

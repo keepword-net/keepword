@@ -399,6 +399,42 @@ async fn a_change_without_its_content_still_shows() {
 }
 
 #[tokio::test]
+async fn a_witness_s_alert_opens_a_page_this_node_never_captured() {
+    let t = tempfile::tempdir().unwrap();
+    let n = node(t.path());
+    let app = ui(&n, UiAuth::LocalOnly);
+    let k = keepword_core::Keypair::generate().unwrap();
+    let alert = keepword_core::statement::Signed::sign(
+        keepword_core::net::Alert {
+            kind: keepword_core::net::AlertKind::SilentEdit,
+            url: Some("https://a.example/terms".into()),
+            summary: "silent edit: +1 -1 lines".into(),
+            evidence: vec![],
+            issued_at_ms: keepword_core::now_ms(),
+            issuer: k.public(),
+        },
+        &k,
+    )
+    .unwrap();
+    n.store.alert_insert(&alert).unwrap();
+    let link = |u: &str| {
+        let q: String = url::form_urlencoded::byte_serialize(u.as_bytes()).collect();
+        format!("/page?u={q}")
+    };
+    let page = get(&app, &link("https://a.example/terms"), "").await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(page.body.contains("Alerts from other witnesses"));
+    assert!(
+        page.body
+            .contains(&format!("from witness {}", k.public().short()))
+    );
+    assert!(page.body.contains("hasn't captured this page"));
+    assert!(page.body.contains("Start watching"));
+    let other = get(&app, &link("https://a.example/privacy"), "").await;
+    assert_eq!(other.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn settings_are_saved_checked_and_kept_as_written() {
     let t = tempfile::tempdir().unwrap();
     let n = node(t.path());
