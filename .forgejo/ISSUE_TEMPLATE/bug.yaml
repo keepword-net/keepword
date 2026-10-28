@@ -1,0 +1,41 @@
+name: Bug
+about: Something in Keepword doesn't work as it should
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`keepword --version`"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it's installed
+      options:
+        - Debian package (apt)
+        - Release archive
+        - From source
+        - Container image
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or logs
+      description: Leave out your notification URLs and anything from your node's key file.
+      render: text

@@ -1,0 +1,44 @@
+name: False alert
+about: A silent-edit alert for a change that isn't one
+title: "False alert: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Noise the normalizer misses raises an alert on every capture of a page, so these reports help the most. The diff is what we need to find the cause.
+  - type: input
+    id: url
+    attributes:
+      label: Page
+      placeholder: https://example.com/privacy
+    validations:
+      required: true
+  - type: input
+    id: when
+    attributes:
+      label: When the alert was raised
+      description: As `keepword alerts` shows it.
+      placeholder: 2026-10-28T05:59Z
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`keepword --version`"
+    validations:
+      required: true
+  - type: textarea
+    id: diff
+    attributes:
+      label: The diff
+      description: "`keepword history URL` lists the change with its two capture IDs; paste `keepword diff A B`."
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Does it come back and go away again? Does the page show it in a browser?
