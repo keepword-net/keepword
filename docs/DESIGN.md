@@ -173,13 +173,13 @@ other checks. `keepword verify --bundle FILE` needs no node, key or network,
 and neither does `keepword diff --bundle A B`, which diffs two bundles'
 normalized text once both verify.
 
-## 4. Normalization (v6, implemented)
+## 4. Normalization (v7, implemented)
 
 The output is line-oriented text, one block per line, which makes it
 diffable, readable and cheap to hash:
 
 ```
-keepword-norm/6 html
+keepword-norm/7 html
 title: Minister resigns
 modified: 2024-05-01T10:00:00Z
 h1: Minister resigns
@@ -205,6 +205,12 @@ The rules:
   role). A site changes these on all its pages at once, and where a page
   has no `<main>` they used to be part of its text. A section's own header
   stays, with the title and "last updated" line it often holds.
+- **Streamed parts**: React sends what takes the server longer after the
+  rest of the page, in a `hidden` element at the end of the body, and a
+  script (`$RC`, `$RS`) moves it over its `<template>` placeholder and the
+  loading fallback around it. Whether a part streams depends on the
+  server's timing, so it is read at its placeholder and the fallback is
+  dropped: the page reads the same either way. Each part is read once.
 - **Text**: NFC, invisible characters removed, whitespace collapsed.
   Relative times ("5 minutes ago", "vor 3 Stunden", "il y a 2 jours")
   become `<reltime>`, and live counters ("1,234 views") become `<n> views`,

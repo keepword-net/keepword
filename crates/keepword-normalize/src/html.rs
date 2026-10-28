@@ -15,6 +15,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 use ego_tree::NodeId;
 use ego_tree::iter::Children;
@@ -24,6 +25,7 @@ use html5ever::tokenizer::{
 };
 use html5ever::tree_builder::{Tracer, TreeBuilder, TreeBuilderOpts};
 use html5ever::{LocalName, TokenizerResult};
+use regex::Regex;
 use scraper::{ElementRef, Html, HtmlTreeSink, Node, Selector};
 use url::Url;
 
@@ -226,6 +228,8 @@ fn parse(html: &str) -> Html {
 struct Walker<'a> {
     base: &'a Url,
     skip: HashSet<NodeId>,
+    /// React's streamed parts, by the placeholder they are read at.
+    streamed: HashMap<NodeId, NodeId>,
     out: Vec<String>,
     buf: String,
     pending: Vec<String>,
@@ -265,7 +269,7 @@ impl<'a> Walker<'a> {
             let kind = top.kind;
             match top.children.next() {
                 Some(child) => match child.value() {
-                    Node::Text(t) => self.buf.push_str(t),
+                    Node::Text(t) if !self.skip.contains(&child.id()) => self.buf.push_str(t),
                     Node::Element(_) => {
                         if let Some(open) =
                             ElementRef::wrap(child).and_then(|c| self.enter(c, kind))
@@ -285,6 +289,22 @@ impl<'a> Walker<'a> {
 
     /// Start on an element. Returns it if its children are to be walked.
     fn enter<'b>(&mut self, el: ElementRef<'b>, kind: &'static str) -> Option<Open<'b>> {
+        // Removed once read: a page whose content root is inside a part
+        // would come back to its placeholder there.
+        if let Some(part) = self
+            .streamed
+            .remove(&el.id())
+            .and_then(|id| el.tree().get(id))
+            .and_then(ElementRef::wrap)
+        {
+            return Some(Open {
+                el: part,
+                kind,
+                block: false,
+                section: false,
+                children: part.children(),
+            });
+        }
         let v = el.value();
         let name = v.name();
         if DROP.contains(&name)
@@ -471,6 +491,75 @@ fn json_ld(doc: &Html, key: &str) -> Option<String> {
         .map(|s| clean_text(&s))
 }
 
+/// `$RC("B:0","S:0")` moves streamed part S:0 over placeholder B:0, and
+/// `$RS("S:1","P:1")` part S:1 to P:1 inside another.
+static REACT_MOVE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\$R([CS])\("([^"]+)","([^"]+)"\)"#).expect("valid regex"));
+
+/// React streams the parts of a page that take the server longer after the
+/// rest: each arrives hidden at the end of the body, and a script moves it
+/// to its `<template>` placeholder, over the fallback shown meanwhile.
+/// Whether a part streams or is served in place depends on the server's
+/// timing, so it is read at its placeholder either way, and the fallbacks
+/// are added to `skip`. Returns the part for each placeholder; each
+/// placeholder and each part is used once, so a page can't make a part
+/// repeat.
+fn react_streamed(doc: &Html, skip: &mut HashSet<NodeId>) -> HashMap<NodeId, NodeId> {
+    let by_id = |s: &str| -> HashMap<&str, NodeId> {
+        doc.select(&sel(s))
+            .filter_map(|e| Some((e.value().attr("id")?, e.id())))
+            .collect()
+    };
+    let placeholders = by_id("template[id]");
+    let parts = by_id("div[hidden][id]");
+    let mut streamed = HashMap::new();
+    let mut used = HashSet::new();
+    for script in doc.select(&sel("script")) {
+        let text: String = script.text().collect();
+        for m in REACT_MOVE.captures_iter(&text) {
+            let boundary = &m[1] == "C";
+            let (at, part) = if boundary {
+                (&m[2], &m[3])
+            } else {
+                (&m[3], &m[2])
+            };
+            let (Some(&at), Some(&part)) = (placeholders.get(at), parts.get(part)) else {
+                continue;
+            };
+            if streamed.contains_key(&at) || !used.insert(part) {
+                continue;
+            }
+            streamed.insert(at, part);
+            // A pending boundary: <!--$?--><template>fallback<!--/$-->.
+            let Some(node) = doc.tree.get(at) else {
+                continue;
+            };
+            let pending = node
+                .prev_sibling()
+                .is_some_and(|p| matches!(p.value(), Node::Comment(c) if &**c == "$?"));
+            if !(boundary && pending) {
+                continue;
+            }
+            let mut depth = 0;
+            for sibling in node.next_siblings() {
+                match sibling.value() {
+                    Node::Comment(c) if &**c == "/$" => {
+                        if depth == 0 {
+                            break;
+                        }
+                        depth -= 1;
+                    }
+                    Node::Comment(c) if c.starts_with('$') => depth += 1,
+                    _ => {
+                        skip.insert(sibling.id());
+                    }
+                }
+            }
+        }
+    }
+    streamed
+}
+
 pub fn normalize(
     html: &str,
     base: &Url,
@@ -504,6 +593,7 @@ pub fn normalize(
             skip.extend(doc.select(&s).map(|e| e.id()));
         }
     }
+    let streamed = react_streamed(&doc, &mut skip);
 
     let root = rules
         .and_then(|r| r.root_selector())
@@ -516,6 +606,7 @@ pub fn normalize(
     let mut w = Walker {
         base,
         skip,
+        streamed,
         out: lines,
         buf: String::new(),
         pending: Vec::new(),
@@ -592,6 +683,43 @@ mod tests {
         assert_eq!(normalize(&marked, &base(), None, 0), out);
         let html = html.replace("article", "div");
         assert_eq!(normalize(&html, &base(), None, 0), ["p: Text"]);
+    }
+
+    #[test]
+    fn streamed_parts_read_as_if_served_in_place() {
+        // React streams what takes the server longer after the rest of the
+        // page, hidden, and moves it over a loading placeholder. N26's
+        // privacy policy streamed its list of policies outside <main>, and
+        // normalized to its title.
+        let inline = r#"<body><main><section><!--$--><h2>Germany</h2>
+            <p>Policy <a href="/de.pdf">here</a></p><p>More</p><!--/$--></section>
+            <p>after</p></main><footer>f</footer>"#;
+        let streamed = r#"<body><main><section><!--$?--><template id="B:0"></template>
+            <div class="shimmer">Loading</div><!--/$--></section><p>after</p></main>
+            <footer>f</footer><div hidden id="S:0"><h2>Germany</h2>
+            <p>Policy <a href="/de.pdf">here</a></p><template id="P:1"></template></div>
+            <div hidden id="S:1"><p>More</p></div>
+            <script>$RS("S:1","P:1")</script><script>$RC("B:0","S:0")</script>"#;
+        let out = normalize(inline, &base(), None, 0);
+        assert_eq!(
+            out,
+            [
+                "h2: Germany",
+                "p: Policy here",
+                "link: https://e.example/de.pdf | here",
+                "p: More",
+                "p: after"
+            ]
+        );
+        assert_eq!(normalize(streamed, &base(), None, 0), out);
+        // A part is read once, however many placeholders name it, and a
+        // root inside a part doesn't take the walk around in circles.
+        let twice = r#"<body><p>x</p><template id="B:0"></template><template id="B:1"></template>
+            <div hidden id="S:0"><p>part</p></div><script>$RC("B:0","S:0");$RC("B:1","S:0")</script>"#;
+        assert_eq!(normalize(twice, &base(), None, 0), ["p: x", "p: part"]);
+        let around = r#"<body><div hidden id="S:0"><main><p>a</p><template id="B:0"></template>
+            </main></div><script>$RC("B:0","S:0")</script>"#;
+        assert_eq!(normalize(around, &base(), None, 0), ["p: a", "p: a"]);
     }
 
     #[test]
