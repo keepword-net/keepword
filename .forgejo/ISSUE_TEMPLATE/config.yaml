@@ -2,10 +2,10 @@ blank_issues_enabled: true
 contact_links:
   - name: Questions and ideas
     url: https://matrix.to/#/#keepword:keepword.net
-    about: Ask in #keepword:keepword.net on Matrix.
+    about: "Ask in #keepword:keepword.net on Matrix."
   - name: Running a witness
     url: https://matrix.to/#/#operators:keepword.net
-    about: Help with setting up or running a node, in #operators:keepword.net.
+    about: "Help with setting up or running a node, in #operators:keepword.net."
   - name: Security issues
     url: https://git.keepword.net/keepword/keepword/src/branch/main/SECURITY.md
     about: Report vulnerabilities privately, as SECURITY.md describes, not in an issue.
