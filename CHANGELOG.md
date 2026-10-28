@@ -59,7 +59,7 @@ only change incompatibly in a new major version.
   to every witness; an address with a secret in its query (`token`,
   `key`, `session`, …) is only watched here, and past the 50 requests the
   network takes from a node the rest aren't asked.
-- **Normalized text is `keepword-norm/6`**, for the fixes below. Captures
+- **Normalized text is `keepword-norm/7`**, for the fixes below. Captures
   only compare when they were normalized the same way: until every
   witness upgrades, verdicts and rechecks draw on fewer witnesses, and a
   witness doesn't compare a URL's first capture after the upgrade with
@@ -103,6 +103,17 @@ only change incompatibly in a new major version.
   bot check is now a failed capture, retried next round, and the page
   says who blocked it: eBay's captcha and Cloudflare's challenges
   (`cf-mitigated: challenge`, whatever their status).
+- **An empty response raised a silent-edit alert, and the page coming
+  back a disclosed edit.** TikTok's CDN now and then serves its privacy
+  policy as a 200 with no body, which read as all of it deleted. A
+  success with an empty body is now a failed capture, retried next round.
+- **A page React streams in parts lost them.** React sends what takes the
+  server longer after the rest of the page, hidden at the end, and a
+  script moves it into place; hidden elements are dropped, and the end of
+  the page is outside its `<main>`. N26's privacy policy normalized to its
+  title once it streamed its list of policies. Streamed parts are now read
+  where the script puts them, and the loading placeholder they replace is
+  left out, so a page reads the same whether a part streamed or not.
 - **DuckDuckGo relabelling a link raised a silent-edit alert.** Its
   `origin` parameter on its own links only tags them for its analytics
   (`origin=funnel_app` became `funnel_browser`), and is now dropped like
