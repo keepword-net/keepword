@@ -209,6 +209,11 @@ impl HttpCapturer {
             }
             body.extend_from_slice(&chunk);
         }
+        // Not the page either: TikTok's CDN now and then serves an empty
+        // 200, which compared with the page reads as all of it deleted.
+        if status.is_success() && body.is_empty() {
+            return Err(CaptureError::Empty);
+        }
 
         Ok(Captured {
             method: CaptureMethod::Http,

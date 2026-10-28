@@ -286,7 +286,8 @@ with the last capture that succeeded the same way, so an edit can't hide
 behind one. A bot check that answers in the page's place isn't recorded at
 all: the capture fails, as eBay serves its captcha with 200. Known are
 Cloudflare's challenges (`cf-mitigated: challenge`) and eBay's redirect to
-`/splashui/`.
+`/splashui/`. Nor is a success with an empty body, which TikTok's CDN
+serves now and then.
 
 ### Regression corpus
 

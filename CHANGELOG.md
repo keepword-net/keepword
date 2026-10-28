@@ -103,6 +103,10 @@ only change incompatibly in a new major version.
   bot check is now a failed capture, retried next round, and the page
   says who blocked it: eBay's captcha and Cloudflare's challenges
   (`cf-mitigated: challenge`, whatever their status).
+- **An empty response raised a silent-edit alert, and the page coming
+  back a disclosed edit.** TikTok's CDN now and then serves its privacy
+  policy as a 200 with no body, which read as all of it deleted. A
+  success with an empty body is now a failed capture, retried next round.
 - **A page React streams in parts lost them.** React sends what takes the
   server longer after the rest of the page, hidden at the end, and a
   script moves it into place; hidden elements are dropped, and the end of

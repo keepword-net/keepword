@@ -43,6 +43,8 @@ pub enum CaptureError {
     Refused(String),
     #[error("blocked by {0}'s bot check")]
     Blocked(&'static str),
+    #[error("empty response")]
+    Empty,
     #[error("response body larger than {0} bytes")]
     TooLarge(usize),
     #[error("browser: {0}")]
