@@ -1,20 +1,20 @@
 #!/bin/sh
 # Keepword production installer.
 #
-# Builds Keepword from source, or with --binary downloads the latest release's
-# static binary, and sets it up as a hardened system service: a dedicated
-# user, a data directory, an IP-to-ASN table that refreshes weekly, systemd
-# (or OpenRC) units, and optionally a TLS reverse proxy (Caddy) and the
-# TLSNotary notary service. On Debian and Ubuntu, --binary installs the
-# release's Debian package from the project's apt repository instead, with
-# the package's units (packaging/debian/).
+# Downloads the latest release's static binary, or with --build builds
+# Keepword from source, and sets it up as a hardened system service: a
+# dedicated user, a data directory, an IP-to-ASN table that refreshes weekly,
+# systemd (or OpenRC) units, and optionally a TLS reverse proxy (Caddy) and
+# the TLSNotary notary service. On Debian and Ubuntu, the release is the
+# Debian package from the project's apt repository instead, with the
+# package's units (packaging/debian/).
 #
 # Supported: Debian, Ubuntu, Fedora, RHEL-likes, Arch, openSUSE, Alpine.
 # Re-running upgrades an existing installation in place; the witness key and
 # data are never touched. Run with --help for options. It also runs piped:
 #
 #   curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
-#       | sudo sh -s -- --binary --domain witness.example.org --caddy
+#       | sudo sh -s -- --domain witness.example.org --caddy
 
 # The script is one { } block: the shell reads all of it before running any,
 # so a download cut short runs nothing, and commands that read stdin can't
@@ -38,6 +38,7 @@ MIN_RUST="1.95"
 
 SOURCE=""
 BINARY=0
+BUILD=0
 APT=1
 DEB=""
 ASN=""
@@ -93,26 +94,27 @@ Features:
   --notary              Build the TLSNotary tier and run a notary on :8482
 
 Installation:
-  --binary              Install the latest release's static binary instead of
-                        building: no compiler or Rust, for small machines
-                        (x86_64 and arm64; not with --render or --notary).
+  --binary              Install the latest release's static binary, the
+                        default: no compiler or Rust (x86_64 and arm64).
                         On Debian and Ubuntu with systemd, it is the Debian
                         package from the project's apt repository, which
                         apt upgrade then keeps current
-  --no-apt              With --binary, install the release archive, not the
-                        Debian package
-  --deb FILE            Install this Debian package (implies --binary)
+  --build               Build from source instead: the checkout the
+                        installer runs from, else --repo at --ref. --render
+                        and --notary build too: releases don't include them
+  --no-apt              Install the release archive, not the Debian package
+  --deb FILE            Install this Debian package
   --source DIR          Build from a local checkout
   --repo URL            Git repository (default: git.keepword.net/keepword/keepword)
-  --ref REF             Branch or tag to build (default: main); with --binary,
-                        the release tag (default: the latest release)
+  --ref REF             The release tag (default: the latest release); with
+                        --build, the branch or tag to build (default: main)
   --prefix DIR          Binary prefix (default: /usr/local)
   --data-dir DIR        Data directory (default: /var/lib/keepword)
   --no-start            Install and configure, but don't start services
   --init SYSTEM         systemd | openrc | none (default: detect); set it when
                         installing into an image or chroot
-  --no-packages         Don't install system packages (you provide curl, a C
-                        compiler and git, or tar with --binary, and
+  --no-packages         Don't install system packages (you provide curl and
+                        tar, or a C compiler and git with --build, and
                         Chromium/Caddy if used)
   -y, --yes             Don't ask for confirmation
 
@@ -157,6 +159,7 @@ while [ $# -gt 0 ]; do
         --render) RENDER=1 ;;
         --notary) NOTARY=1 ;;
         --binary) BINARY=1 ;;
+        --build) BUILD=1 ;;
         --no-apt) APT=0 ;;
         --deb) need_arg "$@"; DEB=$2; BINARY=1; shift ;;
         --source) need_arg "$@"; SOURCE=$2; shift ;;
@@ -186,9 +189,19 @@ case "$RETAIN" in ''|full|normalized|none) ;; *) die "--retain must be full, nor
 [ "$PURGE" -eq 0 ] || [ "$UNINSTALL" -eq 1 ] || die "--purge only works with --uninstall"
 case "$INIT" in ''|systemd|openrc|none) ;; *) die "--init must be systemd, openrc or none" ;; esac
 if [ "$BINARY" -eq 1 ]; then
+    [ "$BUILD" -eq 0 ] || die "use either --binary or --build, not both"
     [ -z "$SOURCE" ] || die "use either --binary or --source, not both"
     [ "$RENDER" -eq 0 ] || die "--render needs a source build: release binaries don't include it"
     [ "$NOTARY" -eq 0 ] || die "--notary needs a source build: release binaries don't include it"
+fi
+# A release unless it can't do what was asked for.
+if [ -n "$SOURCE" ] || [ "$RENDER" -eq 1 ] || [ "$NOTARY" -eq 1 ]; then BUILD=1; fi
+[ "$BUILD" -eq 1 ] || BINARY=1
+if [ "$BINARY" -eq 1 ]; then
+    case "$REPO_REF" in
+        ''|v[0-9]*) ;;
+        *) die "--ref $REPO_REF is not a release tag; add --build to build a branch" ;;
+    esac
 fi
 if [ -n "$DEB" ]; then
     [ "$APT" -eq 1 ] || die "use either --deb or --no-apt, not both"
@@ -535,7 +548,7 @@ elif [ "$BINARY" -eq 1 ]; then
     case "$(uname -m)" in
         x86_64|amd64) target=x86_64-unknown-linux-musl ;;
         aarch64|arm64) target=aarch64-unknown-linux-musl ;;
-        *) die "no release binary for CPU $(uname -m); drop --binary to build from source" ;;
+        *) die "no release binary for CPU $(uname -m); --build builds from source" ;;
     esac
     name="keepword-$tag-$target"
     tmp=$(mktemp -d)

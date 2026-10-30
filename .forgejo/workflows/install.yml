@@ -106,7 +106,7 @@ jobs:
           - os: alpine
             prep: apk add --no-cache -q openrc procps
             init: openrc
-          # The latest release's binary, with the installer piped to sh.
+          # The installer's default, the latest release, piped to sh.
           - os: debian
             prep: apt-get update -qq && apt-get install -y -qq systemd >/dev/null
             init: systemd

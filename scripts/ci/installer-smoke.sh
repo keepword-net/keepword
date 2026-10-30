@@ -4,11 +4,11 @@
 # service would, query its API, then re-run the installer as an upgrade.
 # The node never dials the default seeds: it would join the real network.
 # Usage: installer-smoke.sh INIT [MODE]   (systemd | openrc | none; source | binary | deb)
-# MODE binary installs the latest release, piping the installer to sh the
-# way curl | sh does. MODE deb builds from source, then upgrades onto a
-# Debian package of that build, the way a re-run moves a node installed
-# before the package onto it, and checks that the package's services are
-# the ones the installer writes.
+# MODE binary installs the latest release, the installer's default, piping
+# it to sh the way curl | sh does. MODE deb builds from source, then
+# upgrades onto a Debian package of that build, the way a re-run moves a
+# node installed before the package onto it, and checks that the package's
+# services are the ones the installer writes.
 set -eu
 init=$1
 mode=${2:-source}
@@ -19,7 +19,7 @@ installer() { # installer MODE OPTIONS
     shift
     case "$how" in
         source) sh "$src/scripts/install.sh" --source "$src" "$@" ;;
-        binary) sh -s -- --binary "$@" <"$src/scripts/install.sh" ;;
+        binary) sh -s -- "$@" <"$src/scripts/install.sh" ;;
         deb) sh "$src/scripts/install.sh" --deb "$deb" "$@" ;;
     esac
 }

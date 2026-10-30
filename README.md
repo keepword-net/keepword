@@ -230,7 +230,7 @@ On a server (Debian, Ubuntu, Fedora, RHEL-likes, Arch, openSUSE, Alpine):
 
 ```sh
 curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
-    | sudo sh -s -- --binary --domain witness.example.org --caddy
+    | sudo sh -s -- --domain witness.example.org --caddy
 ```
 
 This installs the latest release's static binary, creates a sandboxed
@@ -240,13 +240,13 @@ Caddy with automatic TLS. No domain? Pass `--public-api 0.0.0.0:8481`
 instead of `--domain` and `--caddy`, and open port 8481: the node is then
 reached at `http://<its IP>:8481`. At home, behind a router? Pass
 `--relay auto` instead: it is reached through a witness that relays for
-it. Re-run it to upgrade. To build from source instead (needed for
-`--render` and `--notary`), drop `--binary`, or run the installer from a
-checkout:
+it. Re-run it to upgrade. To build from source instead, add `--build`;
+`--render` and `--notary` always build, as the release binaries don't
+include them. From a checkout, it builds that checkout:
 
 ```sh
 git clone https://git.keepword.net/keepword/keepword.git && cd keepword
-sudo sh scripts/install.sh --domain witness.example.org --caddy
+sudo sh scripts/install.sh --build --domain witness.example.org --caddy
 ```
 
 The static Linux binaries of the `keepword` command (x86_64 and arm64) are

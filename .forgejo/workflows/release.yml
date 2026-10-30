@@ -94,10 +94,10 @@ jobs:
 
           ```sh
           curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
-              | sudo sh -s -- --binary --domain witness.example.org --caddy
+              | sudo sh -s -- --domain witness.example.org --caddy
           ```
 
-          Drop `--binary` to build from source. The binaries below are static
+          Add `--build` to build from source. The binaries below are static
           Linux builds of the `keepword` command (without headless rendering),
           and the `.deb` packages hold them with the node's services. On
           Debian and Ubuntu the installer installs the package from Keepword's

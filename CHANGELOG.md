@@ -7,6 +7,15 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+### Changed
+
+- **The installer installs the latest release by default**, as if given
+  `--binary`: no compiler, no Rust and no waiting for a build. `--build`
+  builds from source, and `--render` and `--notary` still do, as releases
+  don't include them. Run from a checkout, or re-run on a node built from
+  source, it now installs the release too, unless given `--build`.
+  `--binary` still works.
+
 ## [2.5.0] - 2026-10-30
 
 A web UI that runs a node without the terminal, alerts on your phone or

@@ -2,8 +2,8 @@
 
 There are two supported ways to run a node in production:
 
-- **The installer** (`scripts/install.sh`) builds Keepword from source, or
-  downloads the latest release's static binary, and sets it up as a hardened
+- **The installer** (`scripts/install.sh`) downloads the latest release's
+  static binary, or builds Keepword from source, and sets it up as a hardened
   system service. It supports Debian, Ubuntu, Fedora, RHEL-likes, Arch,
   openSUSE and Alpine, with systemd or OpenRC.
 - **The container image** (`git.keepword.net/keepword/keepword`) is for
@@ -16,42 +16,39 @@ Matrix.
 ## Installer
 
 ```sh
-git clone https://git.keepword.net/keepword/keepword.git
-cd keepword
-sudo sh scripts/install.sh --domain witness.example.org --caddy
+curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
+    | sudo sh -s -- --domain witness.example.org --caddy
 ```
 
-Or in one line, without a checkout or a build: `--binary` installs the latest
-release's static binary (x86_64 or arm64), which suits small machines that
-would take long to compile it:
+This installs the latest release's static binary (x86_64 or arm64), with no
+checkout, compiler or build; `--ref vX.Y.Z` picks another release. `--build`
+builds from source instead: the checkout the installer runs from, or piped,
+a clone of `main`, which can be ahead of the latest release (add
+`--ref vX.Y.Z` to build a release). Release binaries don't include headless
+rendering or the TLSNotary tier, so `--render` and `--notary` always build:
 
 ```sh
-curl -fsSL https://git.keepword.net/keepword/keepword/raw/branch/main/scripts/install.sh \
-    | sudo sh -s -- --binary --domain witness.example.org --caddy
+git clone https://git.keepword.net/keepword/keepword.git
+cd keepword
+sudo sh scripts/install.sh --build --domain witness.example.org --caddy
 ```
 
-Release binaries don't include headless rendering or the TLSNotary tier, so
-`--render` and `--notary` need a build. Piped without `--binary`, the
-installer clones the source and builds `main`, which can be ahead of the
-latest release; add `--ref vX.Y.Z` to build a release. With `--binary`,
-`--ref vX.Y.Z` picks a release other than the latest.
-
-On Debian and Ubuntu with systemd, `--binary` installs the release as a
+On Debian and Ubuntu with systemd, the installer installs the release as a
 Debian package from Keepword's apt repository, so `apt upgrade` keeps the
 node current with the rest of the system: see
 [The Debian package](#the-debian-package).
 
 The installer:
 
-1. installs dependencies with the system package manager: build tools, or
-   just `curl` and `tar` with `--binary` (and Caddy when you pass `--caddy`).
+1. installs dependencies with the system package manager: just `curl` and
+   `tar`, or build tools with `--build` (and Caddy when you pass `--caddy`).
    On Arch this is a full `pacman -Syu`, because Arch doesn't support
    partial upgrades; use `--no-packages` to manage packages yourself;
 2. installs Rust into `/opt/keepword` if the system Rust is missing or too
-   old, verifying the `rustup-init` checksum (not with `--binary`);
-3. builds `keepword` in release mode, or downloads the release binary and
-   checks it against the release's `SHA256SUMS`, and installs it to
-   `/usr/local/bin`; or installs the Debian package;
+   old, verifying the `rustup-init` checksum (only with `--build`);
+3. downloads the release binary and checks it against the release's
+   `SHA256SUMS`, or with `--build` builds `keepword` in release mode, and
+   installs it to `/usr/local/bin`; or installs the Debian package;
 4. creates a `keepword` system user and `/var/lib/keepword` (mode 0750);
 5. creates the node: key, config and empty log;
 6. downloads the IP-to-ASN table from iptoasn.com and schedules a weekly
@@ -62,8 +59,8 @@ The installer:
 9. installs and starts a sandboxed service, then checks that the API
    answers.
 
-Re-running the installer **upgrades in place**: it rebuilds (or downloads the
-latest release), reinstalls and restarts, and never touches the key or data. Options given on the re-run are
+Re-running the installer **upgrades in place**: it downloads the latest
+release (or rebuilds with `--build`), reinstalls and restarts, and never touches the key or data. Options given on the re-run are
 applied to the existing configuration.
 
 ### Common setups
@@ -92,8 +89,8 @@ sudo sh scripts/install.sh --domain witness.example.org --caddy --render --notar
 ```
 
 `sh scripts/install.sh --help` lists every option. `--source DIR` builds a
-local checkout. Without it (and without `--binary`), the installer builds the
-checkout it was run from, or clones `--repo`/`--ref` into `/opt/keepword/src`.
+local checkout. `--build` builds the checkout the installer runs from, or
+clones `--repo`/`--ref` into `/opt/keepword/src`.
 
 ### What gets installed
 
@@ -102,7 +99,7 @@ checkout it was run from, or clones `--repo`/`--ref` into `/opt/keepword/src`.
 | `/usr/local/bin/keepword`, `keepword-tlsn` | binaries |
 | `/usr/local/lib/keepword/update-asn-db` | IP-to-ASN refresh script |
 | `/var/lib/keepword/` | key, `keepword.toml`, SQLite index, blobs, ASN table |
-| `/opt/keepword/` | Rust toolchain, build cache, cloned source |
+| `/opt/keepword/` | with `--build`: Rust toolchain, build cache, cloned source |
 | `keepword.service` | the node: `serve --watch --anchor`, UI on 127.0.0.1:8480, API on 127.0.0.1:8481 (or the `--public-api` address) |
 | `keepword-asn-update.timer` | weekly ASN table refresh (cron on OpenRC) |
 | `keepword-notary.service` | with `--notary` |
@@ -119,13 +116,13 @@ Releases from 2.5.0 on are also Debian packages, for amd64 and arm64, in
 Keepword's apt repository at
 `https://git.keepword.net/api/packages/keepword/debian`. Its `stable` suite
 has the releases, and `beta` has them and the pre-releases. On Debian and
-Ubuntu with systemd, `--binary` installs the package from there instead of
+Ubuntu with systemd, the installer installs the package from there instead of
 the release archive, and adds the repository: `stable`, or `beta` when
 `--ref` is a pre-release, so that node gets the pre-releases after it and
 then the release. `apt upgrade` keeps the node current, and re-running the
 installer still upgrades it too. A node installed before, built or from the
-archive, moves onto the package when you re-run the installer with
-`--binary`, keeping its key and data. `--no-apt` installs the release archive
+archive, moves onto the package when you re-run the installer without
+`--build`, keeping its key and data. `--no-apt` installs the release archive
 instead and moves a node off the package; `--deb FILE` installs a package
 you have, such as one from a release's downloads, without the repository.
 
