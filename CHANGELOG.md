@@ -7,6 +7,18 @@ only change incompatibly in a new major version.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-30
+
+A web UI that runs a node without the terminal, alerts on your phone or
+in a chat channel, Debian packages that `apt upgrade` keeps current, and
+far fewer false silent-edit alerts. Formats and the protocol are
+unchanged: 2.4.0 and 2.5.0 witnesses federate and verify each other's
+bundles as before. The normalizer is not: captures only compare when they
+were normalized the same way, so until every witness upgrades, verdicts
+draw on fewer witnesses. Upgrade every witness. Once 2.5.0 has opened a
+node's data, 2.4.0 can't, so copy the data directory first if you might
+go back.
+
 ### Added
 
 - **Debian packages, in an apt repository.** Each release also comes as a
@@ -746,6 +758,7 @@ produce evidence anyone can verify offline.
 - A private web UI with history, diffs, verdicts, alerts and the network.
 - Licensed under the GNU AGPL v3.
 
+[2.5.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.5.0
 [2.4.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.4.0
 [2.3.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.3.0
 [2.2.0]: https://git.keepword.net/keepword/keepword/releases/tag/v2.2.0
